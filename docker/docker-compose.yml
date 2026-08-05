@@ -1,0 +1,62 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8000"  # host 8080, not 8000 -- 8000 is taken by the LLM Security Gateway project
+    environment:
+      CEKP_POSTGRES_HOST: postgres
+      CEKP_QDRANT_HOST: qdrant
+      CEKP_NEO4J_URI: bolt://neo4j:7687
+      CEKP_NEO4J_USER: neo4j
+      CEKP_NEO4J_PASSWORD: cekp_dev_password
+    depends_on:
+      - postgres
+      - qdrant
+      - neo4j
+    volumes:
+      - ../app:/app/app  # live-reload during dev
+      - ../scripts:/app/scripts  # so scripts/*.py are runnable via `docker compose exec api python scripts/...`
+      - ../data:/app/data  # so a repo git-cloned on the host into ./data is visible for --local-path mode
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.2
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cekp
+      POSTGRES_USER: cekp
+      POSTGRES_PASSWORD: cekp_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  neo4j:
+    image: neo4j:5.22-community
+    environment:
+      NEO4J_AUTH: neo4j/cekp_dev_password
+      # Community edition allows exactly one non-default database, so
+      # v1 keeps everything in the default `neo4j` database rather than
+      # provisioning a separate one -- no multi-tenancy needed yet.
+    ports:
+      - "7474:7474"  # HTTP -- Neo4j Browser, for visually inspecting the graph
+      - "7687:7687"  # Bolt -- what the Python driver actually connects over
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  qdrant_data:
+  postgres_data:
+  neo4j_data:
