@@ -12,7 +12,7 @@ from app.core.graph_store import get_driver
 from app.graph.ast_builder import PythonAstGraphBuilder
 from app.graph.models import SourceFile
 from app.graph.neo4j_repository import Neo4jGraphRepository
-from app.ingestion.github_connector import fetch_repo_documents, GithubIngestionError, RepoNotFoundError, TEXT_EXTENSIONS
+from app.ingestion.github_connector import fetch_repo_documents, GithubIngestionError, RepoNotFoundError, GitHubRateLimitError, TEXT_EXTENSIONS
 from app.ingestion.pdf_connector import extract_pdf_text, PdfIngestionError
 from app.ingestion.pipeline import ingest_document
 from app.models.schemas import IngestGithubRequest, IngestLocalPathRequest
@@ -36,6 +36,9 @@ SKIP_DIRS = {".git", "__pycache__", "node_modules", "venv", ".venv", "build", "d
 
 @router.post("/pdf")
 async def ingest_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="File must have a name")
+    
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     temp_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{file.filename}")
 
@@ -164,10 +167,20 @@ async def ingest_github(request: IngestGithubRequest, db: Session = Depends(get_
         )
     except RepoNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except GitHubRateLimitError as e:
+        # Rate limit exceeded. Return diagnostic info.
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "GitHub API rate limit exceeded",
+                "message": str(e),
+                "rate_limit_remaining": e.remaining,
+                "rate_limit_resets_at": e.reset_timestamp,
+            },
+        )
     except GithubIngestionError as e:
-        # Upstream (GitHub API) failure that isn't "not found" -- rate
-        # limit, network issue, unexpected response shape. 502, not 500:
-        # this is a dependency failing, not a bug in our code.
+        # Other upstream (GitHub API) failure -- network issue, unexpected response shape, etc.
+        # 502, not 500: this is a dependency failing, not a bug in our code.
         raise HTTPException(status_code=502, detail=str(e))
 
     if not documents:

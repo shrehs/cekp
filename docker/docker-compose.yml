@@ -11,6 +11,7 @@ services:
       CEKP_NEO4J_URI: bolt://neo4j:7687
       CEKP_NEO4J_USER: neo4j
       CEKP_NEO4J_PASSWORD: cekp_dev_password
+      CEKP_GITHUB_TOKEN: ${CEKP_GITHUB_TOKEN:-}
     depends_on:
       - postgres
       - qdrant

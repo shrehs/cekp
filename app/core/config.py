@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     chunk_size_tokens: int = 400
     chunk_overlap_tokens: int = 60
     github_api_base: str = "https://api.github.com"
+    github_token: str | None = None  # Optional: GitHub personal access token for higher rate limits
 
     @property
     def postgres_dsn(self) -> str:
