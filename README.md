@@ -72,10 +72,6 @@ Month 2 (Adaptive Retrieval Planner) — core logic done, integrated:
 
 Run tests: `pytest tests/` (requires the full stack, since `VectorStrategy`/`HybridStrategy` import live Qdrant/embedding clients even though the planner/classifier/policy tests use fakes and don't need them at runtime).
 
-## Note
-.gitignore "`ndocs/evaluation_metrics_*.json`ndocs/evaluation_report_.md"
-git rm --cached docs/evaluation_metrics_*.json docs/evaluation_report_.md
-
 ## Known Limitations
 
 - **Graph query phrasing:** Graph queries such as "classes/functions defined in X" currently require the word "defined"; queries such as "list classes in X" may fall back to hybrid search.
