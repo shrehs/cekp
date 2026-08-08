@@ -17,9 +17,22 @@ def get_model() -> SentenceTransformer:
     return _model
 
 
+from typing import cast
+import numpy as np
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     model = get_model()
-    vectors = model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
+
+    vectors = cast(
+        np.ndarray,
+        model.encode(
+            texts,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        ),
+    )
+
     return vectors.tolist()
 
 

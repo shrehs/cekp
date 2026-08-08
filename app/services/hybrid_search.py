@@ -26,7 +26,11 @@ def hybrid_search(question: str, top_k: int = 5) -> list[dict]:
     if not hits:
         return []
 
-    texts = [hit.payload["text"] for hit in hits]
+    texts = [
+        hit.payload["text"]
+        for hit in hits
+        if hit.payload is not None
+    ]
     tokenized_corpus = [t.lower().split() for t in texts]
     tokenized_query = question.lower().split()
 
@@ -46,15 +50,21 @@ def hybrid_search(question: str, top_k: int = 5) -> list[dict]:
     normalized_bm25 = [float(s) / max_bm25 for s in bm25_scores]
 
     combined = []
-    for hit, bm25_norm in zip(hits, normalized_bm25):
+
+    valid_hits = [hit for hit in hits if hit.payload is not None]
+    for hit, bm25_norm in zip(valid_hits, normalized_bm25):
+        payload = hit.payload
+        assert payload is not None
+
         combined_score = (VECTOR_WEIGHT * float(hit.score)) + (BM25_WEIGHT * bm25_norm)
+
         combined.append(
             {
                 "chunk_id": str(hit.id),
-                "document_id": hit.payload["document_id"],
-                "document_title": hit.payload["document_title"],
-                "text": hit.payload["text"],
-                "source_system": hit.payload["source_system"],
+                "document_id": payload["document_id"],
+                "document_title": payload["document_title"],
+                "text": payload["text"],
+                "source_system": payload["source_system"],
                 "score": float(round(combined_score, 4)),
             }
         )

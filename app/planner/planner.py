@@ -180,6 +180,12 @@ def build_trace_response(planner_result: PlannerResult) -> dict:
     whose query it is. In v1 the /query/trace endpoint that calls this
     has no auth of its own -- lock it down before any real deployment
     (see docs/planner.md, Known v1 Limitations).
+
+    `final_documents_count` added so callers (e.g. the evaluation script)
+    can measure "how many documents came back" directly, instead of
+    guessing from `attempts` -- attempts counts strategies TRIED, which
+    is a different number and was previously being used as a stand-in
+    for this by mistake.
     """
     return {
         "ranked_strategies": planner_result.ranked_strategies,
@@ -192,6 +198,9 @@ def build_trace_response(planner_result: PlannerResult) -> dict:
         "final_reasoning": planner_result.result.reasoning if planner_result.result else None,
         "final_latency_ms": planner_result.result.latency_ms if planner_result.result else None,
         "final_metadata": (planner_result.result.metadata or None) if planner_result.result else None,
+        "final_documents_count": (
+            len(planner_result.result.documents) if planner_result.result else 0
+        ),
     }
 
 

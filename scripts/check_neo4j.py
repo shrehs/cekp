@@ -38,7 +38,9 @@ def main():
     try:
         with driver.session() as session:
             result = session.run("RETURN 1 AS value")
-            value = result.single()["value"]
+            record = result.single()
+            assert record is not None
+            value = record["value"]
             if value == 1:
                 print("PASS  Query executed successfully (RETURN 1 -> 1).")
             else:

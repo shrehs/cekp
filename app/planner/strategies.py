@@ -50,11 +50,11 @@ class VectorStrategy(RetrievalStrategy):
             {
                 "chunk_id": str(h.id),
                 "document_id": h.payload["document_id"],
-                "document_title": h.payload["document_title"],
-                "text": h.payload["text"],
-                "score": h.score,
+                "title": h.payload["title"],
+                "content": h.payload["content"],
             }
             for h in hits
+            if h.payload is not None
         ]
         return RetrievalResult(
             documents=documents,
@@ -124,12 +124,87 @@ class GraphStrategy(RetrievalStrategy):
     # "which functions call X" doesn't accidentally match functions_in
     # just because it contains the word "functions".
     _SUB_PATTERNS = [
-        ("get_importers_of", re.compile(r"which\s+modules?\s+imports?\s+([\w./]+)", re.IGNORECASE)),
-        ("get_module_imports", re.compile(r"what\s+does\s+([\w./]+)\s+imports?", re.IGNORECASE)),
-        ("get_callers_of", re.compile(r"(?:which\s+functions?|who)\s+calls?\s+([\w./]+)", re.IGNORECASE)),
-        ("get_functions_defined_in", re.compile(r"functions?\s+(?:are\s+)?defined\s+in\s+([\w./]+)", re.IGNORECASE)),
-        ("get_classes_defined_in", re.compile(r"class(?:es)?\s+(?:are\s+)?defined\s+in\s+([\w./]+)", re.IGNORECASE)),
-        ("find_symbol", re.compile(r"where\s+is\s+([\w./]+)\s+defined", re.IGNORECASE)),
+    (
+        "get_importers_of",
+        re.compile(
+            r"(?:which|what)\s+modules?\s+imports?\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "get_importers_of",
+        re.compile(
+            r"(?:list\s+)?modules?\s+that\s+imports?\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "get_module_imports",
+        re.compile(
+            r"what\s+does\s+([\w./]+)\s+imports?",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "get_module_imports",
+        re.compile(
+            r"what\s+imports?\s+does\s+([\w./]+)\s+have",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "get_callers_of",
+        re.compile(
+            r"(?:which\s+functions?|who)\s+calls?\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "get_callers_of",
+        re.compile(
+            r"what\s+calls?\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "get_callers_of",
+        re.compile(
+            r"(?:list\s+)?callers?\s+of\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "get_functions_defined_in",
+        re.compile(
+            r"(?:what|which|list)?\s*functions?\s+(?:are\s+)?defined\s+in\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "get_classes_defined_in",
+        re.compile(
+            r"(?:what|which|list)?\s*class(?:es)?\s+(?:are\s+)?defined\s+in\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "find_symbol",
+        re.compile(
+            r"where\s+is\s+(?:the\s+)?([\w./]+)"
+            r"(?:\s+(?:class|function|method|module))?"
+            r"\s+defined",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "find_symbol",
+        re.compile(
+            r"(?:find|show\s+me|locate)\s+"
+            r"(?:the\s+)?([\w./]+)"
+            r"\s+(?:class|function|method)\b",
+            re.IGNORECASE,
+        ),
+    ),
     ]
 
     def __init__(self, retriever: GraphRetriever | None = None):
@@ -153,7 +228,13 @@ class GraphStrategy(RetrievalStrategy):
 
         classify_start = time.perf_counter()
         is_org_dependency = any(re.search(p, query, re.IGNORECASE) for p in ORG_DEPENDENCY_PATTERNS)
-        method_name, reference = (None, None) if is_org_dependency else self._classify(query)
+        classification = None if is_org_dependency else self._classify(query)
+
+        if classification is None:
+            method_name = None
+            reference = None
+        else:
+            method_name, reference = classification
         classification_ms = (time.perf_counter() - classify_start) * 1000
 
         if is_org_dependency:
@@ -176,7 +257,8 @@ class GraphStrategy(RetrievalStrategy):
                 "the code-structure graph, which is implemented.",
                 metadata={"classification_ms": classification_ms},
             )
-
+        assert reference is not None
+        
         if method_name is None:
             return RetrievalResult(
                 documents=[],
@@ -263,14 +345,14 @@ class GraphStrategy(RetrievalStrategy):
         )
 
     @classmethod
-    def _classify(cls, query: str) -> tuple[str | None, str | None]:
+    def _classify(cls, query: str) -> tuple[str, str] | None:
         for method_name, pattern in cls._SUB_PATTERNS:
             match = pattern.search(query)
             if match:
                 reference = match.group(1).rstrip("()").strip(".")
                 return method_name, reference
-        return None, None
 
+        return None
 
 def _node_to_doc(node) -> dict:
     """Converts a graph node (Module/Class/Function) into the same list[dict] shape RetrievalResult.documents expects everywhere else."""
