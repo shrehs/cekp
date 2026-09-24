@@ -76,3 +76,13 @@ class GraphRetriever(ABC):
         analysis problem, deliberately deferred.
         """
         raise NotImplementedError
+
+    @abstractmethod
+    def get_methods_of_class(self, class_reference: str, method_name: str) -> FunctionNode | None:
+        """
+        Find a specific method of a class by name. This is more precise
+        than global function search and avoids ambiguity when method names
+        like __init__ are common across many classes.
+        Returns FunctionNode if found, None otherwise.
+        """
+        raise NotImplementedError

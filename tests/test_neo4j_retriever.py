@@ -194,3 +194,30 @@ def test_find_class_returns_class_node_when_found():
     assert isinstance(result, ClassNode)
     assert result.qualified_name == "app.planner.planner.Planner"
     assert result.start_line == 40
+
+
+def test_get_methods_of_class_resolves_class_then_method():
+    driver = FakeDriver(canned_results=[FakeResult([{"method": _function_node_props("app.graph.neo4j_retriever.Neo4jGraphRetriever.__init__", line=42)}])])
+    retriever = Neo4jGraphRetriever(driver)
+
+    result = retriever.get_methods_of_class("Neo4jGraphRetriever", "__init__")
+
+    # Verify that the query uses fuzzy match on class and exact match on method
+    query, params = driver.last_session.calls[0]
+    assert "MATCH (cls:Class)" in query
+    assert "qualified_name = $ref" in query or "ENDS WITH $suffix" in query
+    assert "method.name = $method_ref" in query
+    assert params["method_ref"] == "__init__"
+    
+    assert isinstance(result, FunctionNode)
+    assert result.qualified_name == "app.graph.neo4j_retriever.Neo4jGraphRetriever.__init__"
+    assert result.name == "__init__"
+
+
+def test_get_methods_of_class_returns_none_when_method_not_found():
+    driver = FakeDriver(canned_results=[FakeResult([])])
+    retriever = Neo4jGraphRetriever(driver)
+
+    result = retriever.get_methods_of_class("Neo4jGraphRetriever", "nonexistent_method")
+
+    assert result is None

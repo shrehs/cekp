@@ -11,6 +11,7 @@ hybrid search twice (an approximation of "decompose and retrieve
 per sub-question") rather than a full agent loop -- also called out
 as a v1 limitation.
 """
+import logging
 import re
 import time
 
@@ -25,14 +26,29 @@ from app.planner.strategy_base import RetrievalStrategy
 from app.services.embedding import embed_query
 from app.services.hybrid_search import hybrid_search
 
+logger = logging.getLogger(__name__)
+
 
 class VectorStrategy(RetrievalStrategy):
     """Pure vector similarity search -- no BM25 rerank."""
 
     def retrieve(self, context: PlannerContext) -> RetrievalResult:
         start = time.perf_counter()
-        query_vector = embed_query(context.query)
-        hits = vector_store.vector_search(query_vector, top_k=5)
+        try:
+            query_vector = embed_query(context.query)
+            hits = vector_store.vector_search(query_vector, top_k=5)
+        except Exception:
+            latency_ms = (time.perf_counter() - start) * 1000
+            logger.exception("Vector strategy failed for query: %r", context.query)
+            return RetrievalResult(
+                documents=[],
+                confidence=0.0,
+                strategy_name=StrategyName.VECTOR,
+                outcome=StrategyOutcome.LOW_CONFIDENCE,
+                latency_ms=latency_ms,
+                reasoning="Vector search unavailable because the backing vector service failed.",
+                metadata={"error": "vector_infrastructure_failure"},
+            )
         latency_ms = (time.perf_counter() - start) * 1000
 
         if not hits:
@@ -50,8 +66,10 @@ class VectorStrategy(RetrievalStrategy):
             {
                 "chunk_id": str(h.id),
                 "document_id": h.payload["document_id"],
-                "title": h.payload["title"],
-                "content": h.payload["content"],
+                "document_title": h.payload["document_title"],
+                "text": h.payload["text"],
+                "source_system": h.payload.get("source_system", "unknown"),
+                "score": float(h.score),
             }
             for h in hits
             if h.payload is not None
@@ -71,7 +89,20 @@ class HybridStrategy(RetrievalStrategy):
 
     def retrieve(self, context: PlannerContext) -> RetrievalResult:
         start = time.perf_counter()
-        results = hybrid_search(context.query, top_k=5)
+        try:
+            results = hybrid_search(context.query, top_k=5)
+        except Exception:
+            latency_ms = (time.perf_counter() - start) * 1000
+            logger.exception("Hybrid strategy failed for query: %r", context.query)
+            return RetrievalResult(
+                documents=[],
+                confidence=0.0,
+                strategy_name=StrategyName.HYBRID,
+                outcome=StrategyOutcome.LOW_CONFIDENCE,
+                latency_ms=latency_ms,
+                reasoning="Hybrid search unavailable because the backing vector service failed.",
+                metadata={"error": "hybrid_infrastructure_failure"},
+            )
         latency_ms = (time.perf_counter() - start) * 1000
 
         if not results:
@@ -93,6 +124,16 @@ class HybridStrategy(RetrievalStrategy):
             outcome=StrategyOutcome.SUCCESS,
             latency_ms=latency_ms,
             reasoning=f"Hybrid search, top combined score {top_score:.3f}.",
+            # Was always None before -- every success trace showed
+            # "metadata": null with no way to tell, after the fact, what
+            # actually produced a given confidence. Surfacing the winning
+            # candidate's raw components here so a low-looking-legitimate
+            # score (e.g. an off-topic query's top hit) can be diagnosed
+            # from the trace/eval report directly, instead of guessing.
+            metadata={
+                "top_raw_vector_score": results[0].get("raw_vector_score"),
+                "top_raw_bm25_norm": results[0].get("raw_bm25_norm"),
+            },
         )
 
 
@@ -123,6 +164,9 @@ class GraphStrategy(RetrievalStrategy):
     # requiring "defined in" for functions_in/classes_in) so
     # "which functions call X" doesn't accidentally match functions_in
     # just because it contains the word "functions".
+    #
+    # For class->method patterns, we use two capture groups: (method_name, class_name).
+    # _classify() extracts both and joins them as "method_name:class_name" for special handling.
     _SUB_PATTERNS = [
     (
         "get_importers_of",
@@ -184,6 +228,24 @@ class GraphStrategy(RetrievalStrategy):
         "get_classes_defined_in",
         re.compile(
             r"(?:what|which|list)?\s*class(?:es)?\s+(?:are\s+)?defined\s+in\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "find_method_of_class",
+        re.compile(
+            r"(?:find|show\s+me|locate)\s+"
+            r"(?:the\s+)?([\w_]+)\s+"
+            r"(?:method\s+)?of\s+"
+            r"(?:the\s+)?([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "find_method_of_class",
+        re.compile(
+            r"(?:find|show\s+me|locate)\s+"
+            r"(?:the\s+)?([\w./]+)\s*\.\s*([\w_]+)",
             re.IGNORECASE,
         ),
     ),
@@ -257,9 +319,8 @@ class GraphStrategy(RetrievalStrategy):
                 "the code-structure graph, which is implemented.",
                 metadata={"classification_ms": classification_ms},
             )
-        assert reference is not None
         
-        if method_name is None:
+        if method_name is None or reference is None:
             return RetrievalResult(
                 documents=[],
                 confidence=0.0,
@@ -281,7 +342,16 @@ class GraphStrategy(RetrievalStrategy):
         # client can actually observe.
         retrieval_start = time.perf_counter()
         try:
-            if method_name == "find_symbol":
+            if method_name == "find_method_of_class":
+                # reference is "method_name:class_name"
+                parts = reference.split(":")
+                if len(parts) == 2:
+                    method_ref, class_ref = parts
+                    node = retriever.get_methods_of_class(class_ref, method_ref)
+                    results = [node] if node is not None else []
+                else:
+                    results = []
+            elif method_name == "find_symbol":
                 # "where is X defined" doesn't know in advance whether X
                 # is a function or a class -- try both, function first.
                 node = retriever.find_function(reference)
@@ -349,7 +419,26 @@ class GraphStrategy(RetrievalStrategy):
         for method_name, pattern in cls._SUB_PATTERNS:
             match = pattern.search(query)
             if match:
-                reference = match.group(1).rstrip("()").strip(".")
+                # For class->method patterns, extract both method and class name
+                if method_name == "find_method_of_class" and match.groups().__len__() >= 2:
+                    group1 = match.group(1).rstrip("()").strip(".")
+                    group2 = match.group(2).rstrip("()").strip(".")
+                    
+                    # Detect pattern: "method_name of ClassName" vs "ClassName.method_name"
+                    # For "method_name of ClassName": group1 is method, group2 is class
+                    # For "ClassName.method_name": group1 is class, group2 is method
+                    # Heuristic: if group1 starts with uppercase AND group2 starts with underscore,
+                    # or if group1 contains dots (module path), then group1 is the class
+                    if ("." in group1) or (group1 and group1[0].isupper() and group2.startswith("_")):
+                        # Pattern: "ClassName.method_name" -> group1=class, group2=method
+                        method_ref, class_ref = group2, group1
+                    else:
+                        # Pattern: "method_name of ClassName" -> group1=method, group2=class
+                        method_ref, class_ref = group1, group2
+                    
+                    reference = f"{method_ref}:{class_ref}"
+                else:
+                    reference = match.group(1).rstrip("()").strip(".")
                 return method_name, reference
 
         return None
@@ -394,7 +483,20 @@ class AgenticStrategy(RetrievalStrategy):
 
     def retrieve(self, context: PlannerContext) -> RetrievalResult:
         start = time.perf_counter()
-        results = hybrid_search(context.query, top_k=8)
+        try:
+            results = hybrid_search(context.query, top_k=8)
+        except Exception:
+            latency_ms = (time.perf_counter() - start) * 1000
+            logger.exception("Agentic strategy failed for query: %r", context.query)
+            return RetrievalResult(
+                documents=[],
+                confidence=0.0,
+                strategy_name=StrategyName.AGENTIC,
+                outcome=StrategyOutcome.LOW_CONFIDENCE,
+                latency_ms=latency_ms,
+                reasoning="Agentic search unavailable because the backing vector service failed.",
+                metadata={"error": "agentic_infrastructure_failure"},
+            )
         latency_ms = (time.perf_counter() - start) * 1000
 
         if not results:

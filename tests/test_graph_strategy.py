@@ -48,6 +48,13 @@ class FakeRetriever(GraphRetriever):
     def get_callers_of(self, function_reference):
         return self._record("get_callers_of", function_reference)
 
+    def get_methods_of_class(self, class_reference: str, method_name: str):
+        # Record with a special marker to capture both class and method
+        self.calls.append(("get_methods_of_class", f"{method_name}:{class_reference}"))
+        if self.raises:
+            raise RuntimeError("simulated Neo4j failure")
+        return self.results.get("get_methods_of_class", None)
+
 
 def _ctx(query: str) -> PlannerContext:
     return PlannerContext(query=query)
@@ -198,3 +205,42 @@ def test_org_dependency_question_returns_not_implemented_not_low_confidence():
     assert retriever.calls == []  # never even attempts a graph query for this category
     assert result.outcome == StrategyOutcome.NOT_IMPLEMENTED
     assert result.confidence == 0.0
+
+
+def test_find_method_of_class_pattern_method_of_classname():
+    """
+    Regression test for class->method resolution bug: "Find the __init__ method of Neo4jGraphRepository"
+    should not search for a global __init__ function (which may match many nodes and timeout),
+    but rather search specifically for __init__ within the context of Neo4jGraphRepository class.
+    """
+    method = FunctionNode(id="function:app.graph.neo4j_retriever.Neo4jGraphRetriever.__init__:L42",
+                          name="__init__", qualified_name="app.graph.neo4j_retriever.Neo4jGraphRetriever.__init__",
+                          signature="def __init__(self, driver)",
+                          path="app/graph/neo4j_retriever.py", start_line=42, end_line=43)
+    retriever = FakeRetriever(results={"get_methods_of_class": method})
+    strategy = GraphStrategy(retriever=retriever)
+
+    result = strategy.retrieve(_ctx("Find the __init__ method of Neo4jGraphRepository"))
+
+    assert retriever.calls == [("get_methods_of_class", "__init__:Neo4jGraphRepository")]
+    assert result.outcome == StrategyOutcome.SUCCESS
+    assert result.documents[0]["type"] == "function"
+    assert result.documents[0]["qualified_name"] == "app.graph.neo4j_retriever.Neo4jGraphRetriever.__init__"
+
+
+def test_find_method_of_class_pattern_classname_dot_method():
+    """
+    Alternative syntax: ClassName.method_name should also resolve via get_methods_of_class.
+    """
+    method = FunctionNode(id="function:app.core.config.Settings.__init__:L10",
+                          name="__init__", qualified_name="app.core.config.Settings.__init__",
+                          signature="def __init__(self)",
+                          path="app/core/config.py", start_line=10, end_line=11)
+    retriever = FakeRetriever(results={"get_methods_of_class": method})
+    strategy = GraphStrategy(retriever=retriever)
+
+    result = strategy.retrieve(_ctx("Show me Settings.__init__"))
+
+    assert retriever.calls == [("get_methods_of_class", "__init__:Settings")]
+    assert result.outcome == StrategyOutcome.SUCCESS
+    assert result.documents[0]["qualified_name"] == "app.core.config.Settings.__init__"

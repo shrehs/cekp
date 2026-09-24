@@ -6,6 +6,7 @@ from app.planner.policy_evaluator import PolicyEvaluator
 from app.planner.registry import StrategyRegistry
 from app.planner.result import RetrievalResult
 from app.planner.strategy_base import RetrievalStrategy
+from app.planner.strategies import VectorStrategy
 
 
 class FakeStrategy(RetrievalStrategy):
@@ -215,6 +216,20 @@ def test_strategy_exception_is_caught_and_recorded_as_error():
     assert result.attempts[0]["outcome"] == "error"
     assert result.outcome == PlannerOutcome.SUCCESS
     assert result.result.strategy_name == StrategyName.VECTOR
+
+
+def test_vector_strategy_degrades_to_low_confidence_when_qdrant_is_unreachable(monkeypatch):
+    def boom(_query):
+        raise ConnectionError("[Errno 11001] getaddrinfo failed")
+
+    monkeypatch.setattr("app.services.embedding.embed_query", boom)
+    monkeypatch.setattr("app.core.vector_store.vector_search", lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionError("[Errno 11001] getaddrinfo failed")))
+
+    result = VectorStrategy().retrieve(_ctx())
+
+    assert result.outcome == StrategyOutcome.LOW_CONFIDENCE
+    assert result.documents == []
+    assert result.confidence == 0.0
 
 
 def test_policy_denial_escalates_to_next_authorized_strategy():

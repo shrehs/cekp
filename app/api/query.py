@@ -38,6 +38,12 @@ from app.planner.planner import (
     build_trace_response,
     build_user_response,
 )
+import time
+from app.core.metrics import (
+    QUERY_TOTAL,
+    QUERY_DURATION,
+    ACTIVE_QUERIES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,21 +74,34 @@ def _plan_and_log(request: QueryRequest, db: Session) -> PlannerResult:
 
 @router.post("")
 async def query(request: QueryRequest, db: Session = Depends(get_db)):
-    planner_result = _plan_and_log(request, db)
-    response = build_user_response(planner_result)
-    return {"question": request.question, **response}
+    start = time.perf_counter()
+
+    QUERY_TOTAL.inc()
+    ACTIVE_QUERIES.inc()
+
+    try:
+        planner_result = _plan_and_log(request, db)
+        response = build_user_response(planner_result)
+        return {"question": request.question, **response}
+    finally:
+        QUERY_DURATION.observe(time.perf_counter() - start)
+        ACTIVE_QUERIES.dec()
 
 
 @router.post("/trace")
 async def query_trace(request: QueryRequest, db: Session = Depends(get_db)):
-    """
-    Unredacted internal trace. Gated by settings.trace_endpoint_enabled --
-    returns 404 (not 403) when disabled, so the endpoint's existence
-    isn't confirmed to anyone probing for it.
-    """
     if not settings.trace_endpoint_enabled:
         raise HTTPException(status_code=404, detail="Not found")
 
-    planner_result = _plan_and_log(request, db)
-    trace = build_trace_response(planner_result)
-    return {"question": request.question, **trace}
+    start = time.perf_counter()
+
+    QUERY_TOTAL.inc()
+    ACTIVE_QUERIES.inc()
+
+    try:
+        planner_result = _plan_and_log(request, db)
+        trace = build_trace_response(planner_result)
+        return {"question": request.question, **trace}
+    finally:
+        QUERY_DURATION.observe(time.perf_counter() - start)
+        ACTIVE_QUERIES.dec()

@@ -1,0 +1,12 @@
+Why these metrics?
+
+This gives you four useful dashboard layers:
+| Metric                            | Answers                                                          |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `cekp_queries_total`              | How much query traffic is CEKP receiving?                        |
+| `cekp_query_outcomes_total`       | Are queries succeeding, failing, denied, or finding no evidence? |
+| `cekp_retrieval_strategy_total`   | Which strategy is actually being used?                           |
+| `cekp_retrieval_duration_seconds` | Which retrieval path is slow?                                    |
+| `cekp_retrieved_documents`        | How much evidence is being returned?                             |
+| `cekp_planner_confidence`         | How confident is the planner?                                    |
+| `cekp_query_duration_seconds`     | What is actual end-to-end query latency?                         |

@@ -17,6 +17,7 @@ user cannot distinguish "nothing exists" from "something exists but
 you can't see it." The real reason is always visible internally via
 strategy_attempts in the audit log.
 """
+import logging
 from dataclasses import dataclass, field
 
 from app.planner.config import DEFAULT_PLANNER_CONFIG, PlannerConfig
@@ -26,6 +27,17 @@ from app.planner.intent_classifier import IntentClassifier
 from app.planner.policy_evaluator import PolicyEvaluator
 from app.planner.registry import StrategyRegistry, build_default_registry
 from app.planner.result import RetrievalResult
+
+from app.core.metrics import (
+    QUERY_OUTCOME_TOTAL,
+    RETRIEVAL_STRATEGY_TOTAL,
+    RETRIEVAL_ATTEMPTS_TOTAL,
+    RETRIEVAL_DURATION,
+    RETRIEVED_DOCUMENTS,
+    PLANNER_CONFIDENCE,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -74,6 +86,11 @@ class Planner:
                         "metadata": None,
                     }
                 )
+                RETRIEVAL_ATTEMPTS_TOTAL.labels(
+                    strategy=strategy_name.value,
+                    outcome=StrategyOutcome.DENIED_BY_POLICY.value,
+                ).inc()
+
                 continue
 
             strategy = self.registry.get(strategy_name)
@@ -88,11 +105,20 @@ class Planner:
                         "metadata": None,
                     }
                 )
+                RETRIEVAL_ATTEMPTS_TOTAL.labels(
+                    strategy=strategy_name.value,
+                    outcome=StrategyOutcome.NOT_IMPLEMENTED.value,
+                ).inc()
                 continue
 
             try:
                 result = strategy.retrieve(context)
             except Exception:
+                logger.exception(
+                    "Strategy %s failed for query: %r",
+                    strategy_name,
+                    context.query,
+                )
                 attempts.append(
                     {
                         "strategy": strategy_name.value,
@@ -103,6 +129,10 @@ class Planner:
                         "metadata": None,
                     }
                 )
+                RETRIEVAL_ATTEMPTS_TOTAL.labels(
+                    strategy=strategy_name.value,
+                    outcome=StrategyOutcome.ERROR.value,
+                ).inc()
                 continue
 
             cleared_threshold = (
@@ -141,6 +171,16 @@ class Planner:
                 }
             )
 
+            RETRIEVAL_ATTEMPTS_TOTAL.labels(
+                strategy=strategy_name.value,
+                outcome=result.outcome.value,
+            ).inc()
+
+            if result.latency_ms is not None:
+                RETRIEVAL_DURATION.labels(
+                    strategy=strategy_name.value
+                ).observe(float(result.latency_ms) / 1000.0)
+
             if cleared_threshold:
                 return PlannerResult(
                     outcome=PlannerOutcome.SUCCESS,
@@ -151,9 +191,35 @@ class Planner:
             # LOW_CONFIDENCE, NOT_IMPLEMENTED, DENIED_BY_POLICY, ERROR, or
             # SUCCESS-but-below-threshold: fall through to next strategy.
 
+        final_outcome = self._final_outcome(attempts)
+
+        QUERY_OUTCOME_TOTAL.labels(
+            outcome=final_outcome.value
+        ).inc()
+
         return PlannerResult(
-            outcome=self._final_outcome(attempts),
+            outcome=final_outcome,
             result=None,
+            attempts=attempts,
+            ranked_strategies=ranked_values,
+        )
+
+        RETRIEVAL_STRATEGY_TOTAL.labels(
+            strategy=result.strategy_name.value
+        ).inc()
+
+        QUERY_OUTCOME_TOTAL.labels(
+            outcome=PlannerOutcome.SUCCESS.value
+        ).inc()
+
+        if result.confidence is not None:
+            PLANNER_CONFIDENCE.observe(float(result.confidence))
+
+        RETRIEVED_DOCUMENTS.observe(len(result.documents))
+
+        return PlannerResult(
+            outcome=PlannerOutcome.SUCCESS,
+            result=result,
             attempts=attempts,
             ranked_strategies=ranked_values,
         )

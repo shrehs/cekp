@@ -1,0 +1,389 @@
+{
+  "timestamp": "2026-09-01T18:45:41.828118",
+  "test_suite_size": 24,
+  "statistics": {
+    "total_queries": 24,
+    "success_count": 21,
+    "success_rate": 0.875,
+    "with_evidence_count": 21,
+    "evidence_rate": 0.875,
+    "latency": {
+      "min_ms": 35.15890002017841,
+      "max_ms": 207.81629998236895,
+      "mean_ms": 52.2489958323907,
+      "median_ms": 41.61129999556579,
+      "stdev_ms": 35.86561539189668
+    },
+    "confidence": {
+      "mean": 0.651,
+      "median": 0.6551,
+      "min": 0.5239,
+      "max": 0.85
+    },
+    "outcome_distribution": {
+      "success": 21,
+      "failed": 1,
+      "no_evidence": 2
+    },
+    "strategy_distribution": {
+      "graph": 1,
+      "hybrid": 20
+    },
+    "category_breakdown": {
+      "code_navigation": {
+        "total": 4,
+        "successful": 4
+      },
+      "api_contract": {
+        "total": 3,
+        "successful": 3
+      },
+      "code_logic": {
+        "total": 3,
+        "successful": 3
+      },
+      "dependencies": {
+        "total": 2,
+        "successful": 0
+      },
+      "configuration": {
+        "total": 2,
+        "successful": 2
+      },
+      "error_handling": {
+        "total": 2,
+        "successful": 2
+      },
+      "performance": {
+        "total": 2,
+        "successful": 2
+      },
+      "integration": {
+        "total": 2,
+        "successful": 2
+      },
+      "testing": {
+        "total": 2,
+        "successful": 2
+      },
+      "out_of_scope": {
+        "total": 2,
+        "successful": 1
+      }
+    }
+  },
+  "detailed_results": [
+    {
+      "question": "Where is the PythonAstGraphBuilder class defined?",
+      "category": "code_navigation",
+      "expected_intent": "code_location",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "graph",
+      "actual_strategy": "graph",
+      "confidence": 0.85,
+      "latency_ms": 207.81629998236895,
+      "outcome": "success",
+      "num_results": 1,
+      "top_result_relevant": true
+    },
+    {
+      "question": "Find the __init__ method of Neo4jGraphRepository.",
+      "category": "code_navigation",
+      "expected_intent": "method_lookup",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.686,
+      "latency_ms": 97.75280000758357,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": true
+    },
+    {
+      "question": "Show me the ingest_github function.",
+      "category": "code_navigation",
+      "expected_intent": "code_location",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.64,
+      "latency_ms": 42.176199989626184,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": true
+    },
+    {
+      "question": "Where does Planner.plan() retrieve strategies from?",
+      "category": "code_navigation",
+      "expected_intent": "code_dependency",
+      "expected_strategy": "graph_strategy",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6653,
+      "latency_ms": 40.58830000576563,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "What does the /ingest/github endpoint accept?",
+      "category": "api_contract",
+      "expected_intent": "api_contract",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6444,
+      "latency_ms": 41.04640000150539,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": true
+    },
+    {
+      "question": "What fields are in QueryRequest schema?",
+      "category": "api_contract",
+      "expected_intent": "schema_definition",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.5541,
+      "latency_ms": 42.36459999810904,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": true
+    },
+    {
+      "question": "What are the possible outcomes from the planner?",
+      "category": "api_contract",
+      "expected_intent": "enum_definition",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6173,
+      "latency_ms": 35.15890002017841,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "How does the intent classifier decide what strategy to use?",
+      "category": "code_logic",
+      "expected_intent": "algorithm_explanation",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6779,
+      "latency_ms": 45.34350000903942,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": true
+    },
+    {
+      "question": "Explain the escalation logic in the planner.",
+      "category": "code_logic",
+      "expected_intent": "control_flow",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.5931,
+      "latency_ms": 38.36859998409636,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "What does the policy evaluator check before running a strategy?",
+      "category": "code_logic",
+      "expected_intent": "precondition_check",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6803,
+      "latency_ms": 55.90830001165159,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "What packages does the embedding service import?",
+      "category": "dependencies",
+      "expected_intent": "import_trace",
+      "expected_strategy": "graph_strategy",
+      "actual_intent": "graph",
+      "actual_strategy": "none",
+      "confidence": null,
+      "latency_ms": 46.42759999842383,
+      "outcome": "failed",
+      "num_results": 0,
+      "top_result_relevant": true
+    },
+    {
+      "question": "Which modules depend on the graph_store?",
+      "category": "dependencies",
+      "expected_intent": "reverse_dependency",
+      "expected_strategy": "graph_strategy",
+      "actual_intent": "graph",
+      "actual_strategy": "none",
+      "confidence": null,
+      "latency_ms": 35.99090001080185,
+      "outcome": "no_evidence",
+      "num_results": 0,
+      "top_result_relevant": null
+    },
+    {
+      "question": "What environment variables control CEKP settings?",
+      "category": "configuration",
+      "expected_intent": "config_reference",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.5659,
+      "latency_ms": 36.78699998999946,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": true
+    },
+    {
+      "question": "What is the default confidence threshold for retrieving results?",
+      "category": "configuration",
+      "expected_intent": "threshold_lookup",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6551,
+      "latency_ms": 36.58839999116026,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "What happens when GitHub API rate limit is exceeded?",
+      "category": "error_handling",
+      "expected_intent": "error_case",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6807,
+      "latency_ms": 46.30789998918772,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": true
+    },
+    {
+      "question": "How does the audit logging handle failures?",
+      "category": "error_handling",
+      "expected_intent": "failure_mode",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.7268,
+      "latency_ms": 69.02870000340044,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "Is the Planner instantiated per-request or shared?",
+      "category": "performance",
+      "expected_intent": "architecture_detail",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6386,
+      "latency_ms": 43.20789998746477,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "How many strategies can escalate before giving up?",
+      "category": "performance",
+      "expected_intent": "config_query",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.5798,
+      "latency_ms": 37.91899999487214,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "How is Neo4j connected from the API container?",
+      "category": "integration",
+      "expected_intent": "architecture_connection",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.7923,
+      "latency_ms": 37.727000017184764,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": true
+    },
+    {
+      "question": "What happens when a repository is re-ingested?",
+      "category": "integration",
+      "expected_intent": "system_behavior",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.5616,
+      "latency_ms": 39.495999983046204,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "What tests exist for the graph builder?",
+      "category": "testing",
+      "expected_intent": "test_reference",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6777,
+      "latency_ms": 36.35820001363754,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "How are GitHub connector tests structured?",
+      "category": "testing",
+      "expected_intent": "test_structure",
+      "expected_strategy": "hybrid_search",
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.6602,
+      "latency_ms": 44.84849999425933,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "Tell me about machine learning.",
+      "category": "out_of_scope",
+      "expected_intent": "unknown",
+      "expected_strategy": null,
+      "actual_intent": "hybrid",
+      "actual_strategy": "hybrid",
+      "confidence": 0.5239,
+      "latency_ms": 38.12460001790896,
+      "outcome": "success",
+      "num_results": 5,
+      "top_result_relevant": null
+    },
+    {
+      "question": "What is the weather?",
+      "category": "out_of_scope",
+      "expected_intent": "unknown",
+      "expected_strategy": null,
+      "actual_intent": "hybrid",
+      "actual_strategy": "none",
+      "confidence": null,
+      "latency_ms": 58.64029997610487,
+      "outcome": "no_evidence",
+      "num_results": 0,
+      "top_result_relevant": null
+    }
+  ]
+}

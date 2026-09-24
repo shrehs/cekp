@@ -155,6 +155,32 @@ class Neo4jGraphRetriever(GraphRetriever):
             records = _run_and_log(session, query, "find_class", ref=class_reference, suffix=f".{class_reference}")
             return _class_from_record(records[0], "cls") if records else None
 
+    def get_methods_of_class(self, class_reference: str, method_name: str) -> FunctionNode | None:
+        """
+        Find a specific method of a class. This is more precise than
+        global function search and avoids ambiguity when method names
+        like __init__ are common across many classes.
+        
+        Returns: FunctionNode if found, None otherwise. Only returns one
+        method per class (matches the pattern "ClassName.method_name").
+        """
+        query = f"""
+            MATCH (cls:Class)
+            WHERE {_FUZZY_MATCH_WHERE}
+            WITH cls LIMIT 1
+            MATCH (cls)-[:DEFINES]->(method:Function)
+            WHERE method.name = $method_ref
+            RETURN method
+            ORDER BY method.qualified_name, method.start_line
+            LIMIT 1
+        """
+        with self._driver.session() as session:
+            records = _run_and_log(
+                session, query, "get_methods_of_class",
+                ref=class_reference, suffix=f".{class_reference}", method_ref=method_name
+            )
+            return _function_from_record(records[0], "method") if records else None
+
     def get_callers_of(self, function_reference: str) -> list[FunctionNode]:
         query = """
             MATCH (target:Function)

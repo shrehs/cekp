@@ -2,17 +2,162 @@
 
 Connecting fragmented enterprise knowledge sources into an intelligent, explainable, and secure knowledge layer.
 
-This repo is the v1 implementation described in `docs/architecture.md`. v1 scope:
+CEKP is an enterprise code/document intelligence platform that combines vector, hybrid, and graph retrieval behind an adaptive retrieval planner with policy-aware strategy selection, confidence-based escalation, audit logging, and production observability.
+
+## Architecture
+
+```text
+Enterprise Sources
+       │
+       ▼
+    Ingestion
+       │
+       ├───────────────┐
+       ▼               ▼
+   Qdrant          Neo4j Graph
+   Vectors          Relationships
+       │               │
+       └───────┬───────┘
+               ▼
+       Adaptive Planner
+               │
+       ├── Vector
+       ├── Hybrid
+       └── Graph
+               │
+               ▼
+        Evidence / Context
+               │
+               ▼
+        Answer Generation
+               │
+               ▼
+       FastAPI Query API
+               │
+       ┌───────┼────────┐
+       ▼       ▼        ▼
+    Metrics  Traces   Audit Logs
+       │       │        │
+       ▼       ▼        ▼
+ Prometheus  OTel   PostgreSQL
+       │
+       ▼
+    Grafana
+```
 
 - **Sources:** GitHub (public repo files) + digital PDFs
 - **Storage:** Qdrant (vectors) + PostgreSQL (metadata/RBAC) — Neo4j added in Month 2
 - **Retrieval:** Hybrid search (vector + keyword) in Month 1; Adaptive Planner in Month 2
 - **No OCR, no Confluence/Jira/SharePoint/Snowflake** — deliberately deferred (see architecture doc §10)
 
-## Quickstart
+## Current v1 Scope
+- Sources
+  GitHub repository files
+  Digital PDFs
+- Storage
+  Qdrant — vector retrieval
+  Neo4j — graph/code relationships
+  PostgreSQL — metadata, audit records, and RBAC context
+- Retrieval
+  Vector retrieval
+  Hybrid retrieval
+  Graph retrieval
+  Adaptive retrieval planner
+  Confidence-based escalation
+  Policy-aware strategy authorization
+- API
+  FastAPI
+  /query
+  /query/trace
+  /health
+  /ready
+  /metrics
+- Observability
+  Structured JSON logging
+  Request IDs
+  OpenTelemetry instrumentation
+  Prometheus metrics
+  Grafana dashboards
+- Deployment
+  Docker Compose
+  Containerized API
+  Qdrant
+  PostgreSQL
+  Neo4j
+  Prometheus
+  Grafana
 
+## Quickstart
 ```bash
 docker compose -f docker/docker-compose.yml up -d --build
+```
+The API is available at:
+```bash
+http://localhost:8080
+```
+Swagger documentation:
+```bash
+http://localhost:8080/docs
+```
+Prometheus:
+```bash
+http://localhost:9090
+```
+Grafana:
+```bash
+http://localhost:3000
+```
+
+## Health & Readiness
+Health check:
+``` bash
+GET /health
+```
+Dependency readiness:
+```bash
+GET /ready
+```
+/ready verifies connectivity to the core infrastructure including PostgreSQL, Qdrant, and Neo4j.
+
+## Query System
+
+The /query endpoint routes questions through the adaptive retrieval planner.
+
+The planner:
+
+1. Classifies the query intent.
+2. Ranks applicable retrieval strategies.
+3. Applies strategy-level authorization.
+4. Executes retrieval.
+5. Evaluates confidence.
+6. Escalates when the result does not clear the configured threshold.
+7. Returns evidence only when the planner has sufficient confidence.
+
+Example flow:
+```text
+Question
+   │
+   ▼
+Intent Classification
+   │
+   ▼
+Strategy Ranking
+   │
+   ▼
+Policy Check
+   │
+   ├── denied ──────────► next strategy
+   │
+   ▼
+Retrieval
+   │
+   ▼
+Confidence Evaluation
+   │
+   ├── below threshold ─► escalate
+   │
+   ▼
+Final Evidence / Answer
 ```
 
 This starts:
