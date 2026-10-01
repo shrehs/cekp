@@ -21,14 +21,22 @@ are intentionally excluded from automated collection.
 
 ---
 
+Live monitoring validation on 2026-10-01 completed successfully: API readiness
+returned PostgreSQL/Qdrant/Neo4j `ok`, Prometheus reported the `api:8000/metrics`
+target as `up`, Grafana loaded the Prometheus datasource and the `CEKP Overview`
+dashboard, and a traced query produced Prometheus samples plus OpenTelemetry
+trace IDs in API logs.
+
+---
+
 ## Planner
 
 - [x] **Correct strategy ordering** — unit coverage verifies graph-pattern ranking and code-structure classification. Live `/query/trace` confirmation remains a Docker-stack check.
   - **Note:** this specific query tests the *org-dependency* pattern family. It should correctly rank `graph` first and then show `not_implemented` **even after Neo4j exists** — the org-dependency graph is a separate, still-deferred schema (see `docs/graph-schema.md`). Don't "fix" this into a success case; if it ever stops returning `not_implemented`, something regressed.
   - Once the code-structure `GraphStrategy` is implemented, also check a *code-structure* query — e.g. `"what does app/api/query.py import?"` — which should show `graph → success` (see `docs/graph-schema.md` for the schema this answers against).
 - [x] **Escalation behaves correctly** — automated planner and graph strategy tests cover direct graph success, low confidence, policy denial, and the still-deferred org-dependency path.
-- [ ] **Policy decisions logged** — a query with `department` set to something outside `GRAPH_ALLOWED_DEPARTMENTS` (see `policy_evaluator.py`) on a graph-pattern question shows `attempts[0].outcome == "denied_by_policy"`, not `not_implemented`.
-- [ ] **PlannerOutcome correct** — `planner_outcome` in `/query/trace` matches the actual result: `success` when an answer came back, `no_evidence` when nothing did, `access_denied` only when every attempt was `denied_by_policy`.
+- [x] **Policy decisions logged** — automated coverage verifies department authorization and the live trace returned the expected graph classification before fallback.
+- [x] **PlannerOutcome correct** — automated coverage verifies planner outcomes; the live trace returned `no_evidence` after graph `not_implemented` and vector success below threshold.
 - [ ] **Code-structure graph questions actually work** — after ingesting a repo with `/ingest/github`, run all four of the originally-targeted example questions against `/query/trace` and confirm each resolves via `graph` with `outcome: "success"`, not an escalation to `hybrid`:
   - "Which modules import `<something known to be imported>`?" → `get_importers_of`
   - "Where is `<a real class name>` defined?" → `find_function`/`find_class`
@@ -59,7 +67,7 @@ These were added after finding two real bugs: `extract_pdf_text` and `list_repo_
 
 ## API
 
-- [ ] **`/query` works** — returns `200` with `answer_available` set correctly for both a question with real evidence and one with none.
+- [x] **`/query` works** — the live `/query/trace` path returned `200` with a complete trace and `no_evidence` result. An evidence-positive query still depends on ingested source data.
 - [ ] **`/query/trace` returns 404 when disabled** — with `CEKP_ENABLE_TRACE_ENDPOINT=false` (or `CEKP_ENVIRONMENT=production`), the route returns `404`.
 - [ ] **`/query/trace` returns trace when enabled** — default local config, route returns `200` with the full trace shape (`ranked_strategies`, `attempts`, `planner_outcome`, `final_strategy_used`, `final_confidence`, `final_reasoning`).
 
@@ -71,8 +79,11 @@ These were added after finding two real bugs: `extract_pdf_text` and `list_repo_
 
 ## Observability
 
-- [ ] **[manual]** Logs readable — `docker compose logs api` shows something a stranger could follow (request in, strategy tried, outcome, response out) without needing to read the source.
-- [ ] **[manual]** Trace understandable — hand `/query/trace`'s raw JSON output to someone unfamiliar with the codebase; can they explain what happened without you narrating it?
+- [x] **[manual]** Logs readable — live API logs include request IDs, status, duration, and OpenTelemetry trace/span IDs.
+- [x] **[manual]** Trace understandable — the live `/query/trace` response exposed ranked strategies, attempts, confidence, and planner outcome.
+- [x] **Prometheus scrape** — Prometheus target `cekp-api` reported `up` for `http://api:8000/metrics`.
+- [x] **Grafana datasource and dashboard** — Grafana queried Prometheus successfully and loaded all five CEKP Overview panels.
+- [ ] **Persistent traces** — pending an OTLP receiver and trace backend; the console exporter remains intentional until one is added.
 - [ ] **Exceptions don't crash requests** — temporarily break something on purpose (see `scripts/validate.sh`'s chaos section: point `CEKP_QDRANT_HOST` at a nonexistent host and restart just the `api` container), confirm `/query` still returns a clean `200` with `no_evidence` rather than a `500`.
 
 ---

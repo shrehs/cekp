@@ -107,6 +107,12 @@ Grafana:
 ```bash
 http://localhost:3000
 ```
+CEKP dashboard:
+```bash
+http://localhost:3000/d/cekp-overview/cekp-overview
+```
+The dashboard covers request volume, p50/p95 query latency, non-success rate,
+retrieval strategy usage, and query outcomes.
 
 ## Local Tests
 
@@ -257,6 +263,9 @@ OpenTelemetry
 FastAPI and SQLAlchemy are instrumented for distributed tracing.
 
 The local environment currently exports spans through the OpenTelemetry console exporter.
+Live Compose validation confirmed FastAPI and SQLAlchemy spans in the API logs.
+Persistent queryable traces still require an OTLP receiver and trace backend,
+which are not included in the current stack.
 
 Prometheus + Grafana
 
