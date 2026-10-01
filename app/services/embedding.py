@@ -3,14 +3,14 @@ Embedding service. Loads the sentence-transformers model once (singleton)
 since model load is the expensive part -- every ingestion/query call
 should reuse this instance.
 """
-from sentence_transformers import SentenceTransformer
-
 from app.core.config import settings
 
-_model: SentenceTransformer | None = None
+_model = None
 
 
-def get_model() -> SentenceTransformer:
+def get_model():
+    from sentence_transformers import SentenceTransformer
+
     global _model
     if _model is None:
         _model = SentenceTransformer(settings.embedding_model)

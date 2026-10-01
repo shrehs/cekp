@@ -30,7 +30,7 @@ from app.planner.strategies import GraphStrategy
          ("find_symbol", "ingest_github")),
 
         ("Find the __init__ method of Neo4jGraphRepository.",
-         ("find_symbol", "__init__")),
+         ("find_method_of_class", "__init__:Neo4jGraphRepository")),
 
         ("What functions are defined in planner.py?",
          ("get_functions_defined_in", "planner.py")),

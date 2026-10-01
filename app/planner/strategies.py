@@ -232,6 +232,13 @@ class GraphStrategy(RetrievalStrategy):
         ),
     ),
     (
+        "get_classes_defined_in",
+        re.compile(
+            r"(?:what|which|list)\s+class(?:es)?\s+in\s+([\w./]+)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "find_method_of_class",
         re.compile(
             r"(?:find|show\s+me|locate)\s+"
@@ -441,7 +448,7 @@ class GraphStrategy(RetrievalStrategy):
                     reference = match.group(1).rstrip("()").strip(".")
                 return method_name, reference
 
-        return None
+        return None, None
 
 def _node_to_doc(node) -> dict:
     """Converts a graph node (Module/Class/Function) into the same list[dict] shape RetrievalResult.documents expects everywhere else."""

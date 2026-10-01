@@ -43,7 +43,7 @@ The planner's job is orchestration (which strategy, in what order, with what fal
 
 - **Rule-based intent classification.** Keyword/regex patterns, not a learned classifier. A future version could log `(query, chosen_strategy, outcome)` pairs and train a real classifier on accumulated data.
 - **Strategy-specific confidence heuristics, not calibrated across strategies.** See `docs/confidence.md`.
-- **Graph retrieval returns `NOT_IMPLEMENTED`** until Neo4j integration (Phase 3 of the roadmap).
+- **Organization-dependency graph retrieval returns `NOT_IMPLEMENTED`** until the separate organization schema and entity extraction are implemented. Code-structure graph retrieval is implemented against the Neo4j schema.
 - **Agentic strategy is a placeholder** — a single hybrid-search call with a conservative confidence heuristic, not true multi-hop decomposition.
 - **Planner decisions are deterministic** — no learned routing policy yet.
 - **`PlannerContext.history` is reserved, not read.** Nothing in v1 does multi-turn retrieval; the field exists so multi-turn support doesn't require a signature change later.

@@ -95,6 +95,9 @@ def test_minimal_concrete_retriever_satisfies_the_interface():
         def get_callers_of(self, function_reference):
             return []
 
+        def get_methods_of_class(self, class_reference, method_name):
+            return None
+
     retriever = MinimalRetriever()
     assert retriever.get_module_imports("app.main") == []
     assert retriever.find_function("app.main.health") is None

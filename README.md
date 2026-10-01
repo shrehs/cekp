@@ -108,6 +108,21 @@ Grafana:
 http://localhost:3000
 ```
 
+## Local Tests
+
+The project is currently validated with Python 3.13 and the pinned dependencies in
+`requirements.txt`. Create or activate the virtual environment, install the
+dependencies, and run:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+The automated suite currently reports **145 passed**. `pytest.ini` limits discovery
+to the application tests and excludes live endpoint smoke scripts that require the
+Docker stack to be running. Those scripts remain manual checks.
+
 ## Health & Readiness
 Health check:
 ``` bash
@@ -160,63 +175,191 @@ Confidence Evaluation
 Final Evidence / Answer
 ```
 
-This starts:
-- `api` — FastAPI app on `http://localhost:8080` (docs at `/docs`)
-- `qdrant` — vector store on `http://localhost:6333`
-- `postgres` — metadata store on `localhost:5432`
+## Policy Model
 
-## Integration Validation
+Graph retrieval is currently department-gated.
 
-Before touching Neo4j, validate everything built so far against a live stack — see `docs/integration-validation.md` for the full checklist and `scripts/validate.sh` for an automated runner:
+The v1 policy evaluator allows Graph strategy access for:
+``` bash
+engineering
+admin
+```
+Unknown departments are denied by default rather than being implicitly authorized.
 
+This is intentionally a strategy-level authorization layer. Document-level sensitivity filtering remains inside the underlying retrieval/storage layer.
+
+## Evaluation
+
+The automated test suite and the live evaluation benchmark measure different
+surfaces. The test suite covers parser, ingestion, graph, planner, policy, and
+retrieval contracts without requiring external services. The benchmark below is
+the latest recorded query-system evaluation and requires the running stack.
+
+The current evaluation set contains 24 representative queries covering:
+
+- code navigation
+- API contracts
+- code logic
+- dependencies
+- configuration
+- error handling
+- performance
+- integration
+- testing
+- out-of-scope questions
+
+## Current v1 evaluation:
+```text
+21 / 24 successful cases
+87.5% success rate
+~195 ms average reported latency
+```
+
+The remaining cases include intentional out-of-scope/no-evidence behavior and a dependency query where Graph access is denied when no authorized department context is supplied.
+
+The evaluation is therefore treated as a baseline rather than optimized purely for a higher benchmark score.
+
+Run the evaluator:
 ```bash
+.\.venv\Scripts\python.exe scripts\evaluate_query_system.py
+```
+## Metrics
+
+CEKP exposes application-level Prometheus metrics including:
+```bash
+cekp_queries_total
+cekp_query_outcomes_total
+cekp_query_duration_seconds
+cekp_retrieval_strategy_total
+cekp_retrieval_attempts_total
+cekp_retrieval_duration_seconds
+cekp_retrieved_documents
+cekp_planner_confidence
+cekp_active_queries
+```
+These complement the standard FastAPI/HTTP metrics exposed by the application.
+
+## Observability
+Structured Logging
+
+# Requests include:
+
+timestamp
+log level
+logger
+request ID
+HTTP method
+path
+status code
+duration
+OpenTelemetry
+
+FastAPI and SQLAlchemy are instrumented for distributed tracing.
+
+The local environment currently exports spans through the OpenTelemetry console exporter.
+
+Prometheus + Grafana
+
+Prometheus scrapes the API metrics endpoint and Grafana provides the operational dashboard layer.
+
+## Project Layout
+``` bash
+app/
+  api/              FastAPI routers
+  core/             configuration, clients, logging, telemetry, metrics
+  ingestion/        source connectors and processing pipeline
+  models/           Pydantic and database models
+  planner/          adaptive retrieval planner and policies
+  services/         chunking, embedding, retrieval, graph services
+
+docker/
+  Dockerfile
+  docker-compose.yml
+  prometheus/
+  grafana/
+
+docs/
+  architecture.md
+  planner.md
+  confidence.md
+  integration-validation.md
+
+scripts/
+  evaluation and validation utilities
+
+tests/
+  unit and planner tests
+Validation
+
+Start the complete local stack:
+
 docker compose -f docker/docker-compose.yml up -d --build
+```
+
+Run the validation script:
+```bash
 ./scripts/validate.sh
 ```
-
-The script covers ingestion, planner escalation behavior, the trace endpoint (both enabled and how to test disabled), `/query`, and audit persistence. A few items are marked `[manual]` in the checklist — PDF ingestion (needs a real sample file), log readability, and the chaos test (stopping Qdrant mid-request) — and need a human to actually look, not just a script exit code.
-
-## Project layout
-
-```
-app/
-  api/          FastAPI routers (ingestion, query endpoints)
-  core/         config, DB clients, shared settings
-  ingestion/    source connectors + processing pipeline (PDF, GitHub)
-  models/       Pydantic + DB models
-  planner/      Adaptive Retrieval Planner (see docs/planner.md, docs/confidence.md)
-  services/     business logic (chunking, embedding, retrieval)
-docker/         Dockerfile + docker-compose.yml
-docs/           architecture.md, planner.md, confidence.md
-tests/          unit tests
-```
-
-## Status
-
-Month 1 (Foundation) — done:
-- [x] Repo scaffold
-- [x] Config + DB clients (Qdrant, Postgres)
-- [x] PDF ingestion connector — **error boundaries hardened**: corrupted/zero-byte PDFs now return a clean `422` (`CorruptedPdfError`) instead of an unguarded `pypdf` exception crashing to `500`
-- [x] GitHub ingestion connector — **error boundaries hardened**: nonexistent/private-without-credentials repos now return a clean `404` (`RepoNotFoundError`) instead of an unguarded `httpx.HTTPStatusError` crashing to `500`
-- [x] Chunking + embedding service
-- [x] Hybrid search service
-
-Month 2 (Adaptive Retrieval Planner) — core logic done, integrated:
-- [x] `PlannerContext`, `StrategyName`/`StrategyOutcome`/`PlannerOutcome` enums, `RetrievalResult`
-- [x] `RetrievalStrategy` interface + `VectorStrategy`, `HybridStrategy`, `AgenticStrategy` (placeholder), `GraphStrategy` (stub, `NOT_IMPLEMENTED`)
-- [x] `StrategyRegistry`, `IntentClassifier` (rule-based, ranked list), `PolicyEvaluator` (department-gated placeholder)
-- [x] `Planner` — escalation loop, policy checks, no-leakage response for denied vs. no-evidence
-- [x] `/query` now routes through the planner instead of calling `hybrid_search` directly
-- [x] `strategy_attempts` includes per-attempt `confidence` (`None` when a strategy never actually ran vs. a real `0.0` when it did)
-- [x] `/query/trace` — full unredacted internal trace (ranked strategies, every attempt, planner outcome) for debugging/demos. **Gated in code** via `settings.trace_endpoint_enabled` (enabled by default only in `local`/`development`, returns 404 — not 403 — when disabled, so its existence isn't confirmed elsewhere).
-- [x] `build_audit_record()` — audit-log field extraction now lives in one place (`app/planner/planner.py`), consumed by `query.py` instead of being duplicated inline.
-- [x] Unit tests: classifier, registry, policy evaluator, planner, chaos scenarios (28 tests, run without live infra — see note below)
-- [ ] Neo4j graph layer (real `GraphStrategy` implementation)
-- [ ] AI Query Trace view
-- [ ] Data-driven classifier (v2)
-
-Run tests: `pytest tests/` (requires the full stack, since `VectorStrategy`/`HybridStrategy` import live Qdrant/embedding clients even though the planner/classifier/policy tests use fakes and don't need them at runtime).
+Run the Python test suite:
+```bash
+pytest tests/
+Current Engineering Status
+Completed
+ FastAPI API
+ GitHub ingestion
+ PDF ingestion
+ Chunking and embeddings
+ Vector retrieval
+ Hybrid retrieval
+ Neo4j graph retrieval
+ Adaptive retrieval planner
+ Strategy ranking
+ Confidence-based escalation
+ Strategy-level policy authorization
+ Audit logging
+ /query/trace
+ Health and readiness checks
+ Structured JSON logging
+ Request IDs
+ OpenTelemetry instrumentation
+ Prometheus metrics
+ Grafana infrastructure
+ Docker Compose deployment
+ Evaluation harness
+ Graph navigation tests
+ Retrieval latency instrumentation
+ ```
+## Next
+```bash
+ Load testing and capacity characterization
+ AWS deployment
+ CI/CD pipeline
+ Persistent production tracing backend
+ Data-driven intent classification
+ User feedback signals
+ Further policy/RBAC integration
+ ```
 
 ## Known Limitations
+Graph strategy authorization currently requires an authorized department context.
+The v1 policy evaluator uses a placeholder department-based authorization model.
+The intent classifier is rule-based.
+Some graph queries depend on supported query phrasing.
+The local OpenTelemetry setup currently uses console span export rather than a persistent tracing backend.
+Production deployment and load characteristics have not yet been fully characterized.
 
-- **Graph query phrasing:** Graph queries such as "classes/functions defined in X" currently require the word "defined"; queries such as "list classes in X" may fall back to hybrid search.
+## Design Principles
+
+CEKP intentionally favors incremental productionization over unnecessary infrastructure complexity.
+
+The current system prioritizes:
+
+explicit retrieval strategies
+explainable planner decisions
+policy-aware escalation
+observable APIs
+reproducible local deployment
+measurable performance
+graceful failure and no-leakage behavior
+
+Kubernetes/EKS and other distributed infrastructure are deliberately deferred until the workload and operational requirements justify them.
