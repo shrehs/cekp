@@ -64,8 +64,9 @@ def hybrid_search(question: str, top_k: int = 5) -> list[dict]:
     # float produces a numpy.bool_ that breaks JSON serialization. Casting
     # here, at the one place numpy enters this pipeline, prevents that
     # class of bug regardless of what happens downstream.
-    max_bm25 = float(max(bm25_scores)) if max(bm25_scores) > 0 else 1.0
-    normalized_bm25 = [float(s) / max_bm25 for s in bm25_scores]
+    non_negative_bm25 = [max(0.0, float(score)) for score in bm25_scores]
+    max_bm25 = max(non_negative_bm25) if non_negative_bm25 else 1.0
+    normalized_bm25 = [score / max_bm25 if max_bm25 > 0 else 0.0 for score in non_negative_bm25]
 
     combined = []
 

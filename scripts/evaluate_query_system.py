@@ -43,6 +43,7 @@ class QueryMetric:
     latency_ms: float
     outcome: str
     num_results: int
+    evidence_backed_success: bool
     top_result_relevant: bool | None  # True/False/None (unevaluated)
     notes: str = ""
 
@@ -326,6 +327,7 @@ def extract_metrics(test_case: dict, trace_response: dict) -> QueryMetric:
     # `outcome`. A success with 3 documents and a success with 1 document
     # now read differently; a no_evidence outcome always reads 0.
     num_results = trace_response.get("final_documents_count", 0)
+    evidence_backed_success = outcome == "success" and num_results > 0
     
     # Check if top result is relevant (manual feedback)
     top_result_relevant = None
@@ -352,6 +354,7 @@ def extract_metrics(test_case: dict, trace_response: dict) -> QueryMetric:
         latency_ms=latency_ms,
         outcome=outcome,
         num_results=num_results,
+        evidence_backed_success=evidence_backed_success,
         top_result_relevant=top_result_relevant,
     )
 
@@ -392,6 +395,9 @@ def compute_statistics(metrics: list[QueryMetric]) -> dict:
     latencies = [m.latency_ms for m in metrics]
     successful = [m for m in metrics if m.outcome == "success"]
     with_evidence = [m for m in metrics if m.num_results > 0]
+    evidence_backed_successes = [m for m in metrics if m.evidence_backed_success]
+    evaluated_relevance = [m for m in metrics if m.top_result_relevant is not None]
+    relevant_results = [m for m in evaluated_relevance if m.top_result_relevant]
     
     # Outcome distribution
     outcomes = {}
@@ -422,6 +428,19 @@ def compute_statistics(metrics: list[QueryMetric]) -> dict:
         "success_rate": len(successful) / len(metrics) if metrics else 0,
         "with_evidence_count": len(with_evidence),
         "evidence_rate": len(with_evidence) / len(metrics) if metrics else 0,
+        "evidence_backed_success_count": len(evidence_backed_successes),
+        "evidence_backed_success_rate": (
+            len(evidence_backed_successes) / len(metrics) if metrics else 0
+        ),
+        "success_without_evidence_count": len(
+            [m for m in successful if not m.evidence_backed_success]
+        ),
+        "evaluated_relevance_count": len(evaluated_relevance),
+        "relevant_result_count": len(relevant_results),
+        "relevance_rate": (
+            len(relevant_results) / len(evaluated_relevance)
+            if evaluated_relevance else None
+        ),
         "latency": {
             "min_ms": min(latencies),
             "max_ms": max(latencies),
@@ -460,6 +479,10 @@ def generate_markdown_report(metrics: list[QueryMetric], stats: dict) -> str:
     report.append(f"- **Total Queries:** {stats['total_queries']}")
     report.append(f"- **Success Rate:** {stats['success_rate']*100:.1f}% ({stats['success_count']}/{stats['total_queries']})")
     report.append(f"- **Evidence Found:** {stats['evidence_rate']*100:.1f}% ({stats['with_evidence_count']}/{stats['total_queries']})")
+    report.append(f"- **Evidence-backed Success:** {stats['evidence_backed_success_rate']*100:.1f}% ({stats['evidence_backed_success_count']}/{stats['total_queries']})")
+    report.append(f"- **Success Without Evidence:** {stats['success_without_evidence_count']}")
+    if stats["relevance_rate"] is not None:
+        report.append(f"- **Evaluated Relevance:** {stats['relevance_rate']*100:.1f}% ({stats['relevant_result_count']}/{stats['evaluated_relevance_count']})")
     report.append(f"- **Avg Latency:** {stats['latency']['mean_ms']:.0f}ms (median: {stats['latency']['median_ms']:.0f}ms)")
     report.append(f"- **Latency Range:** {stats['latency']['min_ms']:.0f}ms - {stats['latency']['max_ms']:.0f}ms\n")
     

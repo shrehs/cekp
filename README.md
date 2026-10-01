@@ -125,7 +125,7 @@ dependencies, and run:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The automated suite currently reports **145 passed**. `pytest.ini` limits discovery
+The automated suite currently reports **150 passed**. `pytest.ini` limits discovery
 to the application tests and excludes live endpoint smoke scripts that require the
 Docker stack to be running. Those scripts remain manual checks.
 
@@ -262,14 +262,20 @@ OpenTelemetry
 
 FastAPI and SQLAlchemy are instrumented for distributed tracing.
 
-The local environment currently exports spans through the OpenTelemetry console exporter.
-Live Compose validation confirmed FastAPI and SQLAlchemy spans in the API logs.
-Persistent queryable traces still require an OTLP receiver and trace backend,
-which are not included in the current stack.
+Docker Compose exports spans through OTLP HTTP to Jaeger at
+`http://jaeger:4318/v1/traces`. Jaeger UI is available at:
+```bash
+http://localhost:16686
+```
+The console exporter remains the fallback when `CEKP_OTLP_ENDPOINT` is unset.
+Live validation confirmed a query trace persisted in Jaeger with eight spans.
 
 Prometheus + Grafana
 
 Prometheus scrapes the API metrics endpoint and Grafana provides the operational dashboard layer.
+The evaluator also reports evidence-backed success separately from raw planner
+success, so a successful strategy with zero returned documents cannot inflate
+retrieval quality.
 
 ## Project Layout
 ``` bash

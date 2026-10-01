@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # (app/api/query.py), not just documentation. Explicit opt-in via env
     # var overrides the environment-based default below if set.
     enable_trace_endpoint: bool | None = None
+    otlp_endpoint: str | None = None
 
     # Postgres (metadata / RBAC)
     postgres_host: str = "postgres"

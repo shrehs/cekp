@@ -6,7 +6,7 @@ Run `scripts/validate.sh` (same repo) to execute most of this automatically. Ite
 
 ## Automated baseline
 
-As of 2026-10-01, the repository test suite passes with **145 tests passed** using
+As of 2026-10-01, the repository test suite passes with **150 tests passed** using
 Python 3.13 and the project virtual environment:
 
 ```powershell
@@ -25,7 +25,8 @@ Live monitoring validation on 2026-10-01 completed successfully: API readiness
 returned PostgreSQL/Qdrant/Neo4j `ok`, Prometheus reported the `api:8000/metrics`
 target as `up`, Grafana loaded the Prometheus datasource and the `CEKP Overview`
 dashboard, and a traced query produced Prometheus samples plus OpenTelemetry
-trace IDs in API logs.
+trace IDs in API logs. The fresh no-cache API image build completed with the
+CPU-only Torch wheel, and the rebuilt API exported query spans to Jaeger.
 
 ---
 
@@ -69,7 +70,7 @@ These were added after finding two real bugs: `extract_pdf_text` and `list_repo_
 
 - [x] **`/query` works** — the live `/query/trace` path returned `200` with a complete trace and `no_evidence` result. An evidence-positive query still depends on ingested source data.
 - [ ] **`/query/trace` returns 404 when disabled** — with `CEKP_ENABLE_TRACE_ENDPOINT=false` (or `CEKP_ENVIRONMENT=production`), the route returns `404`.
-- [ ] **`/query/trace` returns trace when enabled** — default local config, route returns `200` with the full trace shape (`ranked_strategies`, `attempts`, `planner_outcome`, `final_strategy_used`, `final_confidence`, `final_reasoning`).
+- [x] **`/query/trace` returns trace when enabled** — the rebuilt API returned `200` with ranked strategies, attempts, planner outcome, confidence, latency, and metadata.
 
 ## Persistence
 
@@ -83,7 +84,7 @@ These were added after finding two real bugs: `extract_pdf_text` and `list_repo_
 - [x] **[manual]** Trace understandable — the live `/query/trace` response exposed ranked strategies, attempts, confidence, and planner outcome.
 - [x] **Prometheus scrape** — Prometheus target `cekp-api` reported `up` for `http://api:8000/metrics`.
 - [x] **Grafana datasource and dashboard** — Grafana queried Prometheus successfully and loaded all five CEKP Overview panels.
-- [ ] **Persistent traces** — pending an OTLP receiver and trace backend; the console exporter remains intentional until one is added.
+- [x] **Persistent traces** — OTLP HTTP exports to Jaeger; the live query trace was found through Jaeger's query API with eight spans.
 - [ ] **Exceptions don't crash requests** — temporarily break something on purpose (see `scripts/validate.sh`'s chaos section: point `CEKP_QDRANT_HOST` at a nonexistent host and restart just the `api` container), confirm `/query` still returns a clean `200` with `no_evidence` rather than a `500`.
 
 ---
