@@ -19,6 +19,7 @@ strategy_attempts in the audit log.
 """
 import logging
 from dataclasses import dataclass, field
+from opentelemetry import trace
 
 from app.planner.config import DEFAULT_PLANNER_CONFIG, PlannerConfig
 from app.planner.context import PlannerContext
@@ -38,6 +39,7 @@ from app.core.metrics import (
 )
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer("cekp.planner")
 
 
 @dataclass(frozen=True)
@@ -62,14 +64,24 @@ class Planner:
         self.config = config
 
     def plan(self, context: PlannerContext) -> PlannerResult:
-        ranked = self.classifier.classify(context)
+        with tracer.start_as_current_span("planner.intent_classification") as span:
+            ranked = self.classifier.classify(context)
+            span.set_attribute("cekp.query_length", len(context.query or ""))
+            span.set_attribute("cekp.ranked_strategy_count", len(ranked))
+            span.set_attribute("cekp.ranked_strategies", ",".join(s.value for s in ranked))
+
         ranked = ranked[: self.config.max_escalations]
         ranked_values = [s.value for s in ranked]
 
         attempts: list[dict] = []
 
         for strategy_name in ranked:
-            if not self.policy.is_authorized(strategy_name, context):
+            with tracer.start_as_current_span("planner.policy_check") as span:
+                authorized = self.policy.is_authorized(strategy_name, context)
+                span.set_attribute("cekp.strategy", strategy_name.value)
+                span.set_attribute("cekp.authorized", authorized)
+
+            if not authorized:
                 # confidence=None: retrieval never ran, so there's no
                 # confidence value to report -- distinct from a strategy
                 # that ran and genuinely returned 0.0 (e.g. GraphStrategy
@@ -112,7 +124,14 @@ class Planner:
                 continue
 
             try:
-                result = strategy.retrieve(context)
+                with tracer.start_as_current_span(
+                    f"retrieval.strategy.{strategy_name.value}"
+                ) as span:
+                    span.set_attribute("cekp.strategy", strategy_name.value)
+                    result = strategy.retrieve(context)
+                    span.set_attribute("cekp.outcome", result.outcome.value)
+                    span.set_attribute("cekp.confidence", float(result.confidence))
+                    span.set_attribute("cekp.documents_count", len(result.documents))
             except Exception:
                 logger.exception(
                     "Strategy %s failed for query: %r",
@@ -135,10 +154,16 @@ class Planner:
                 ).inc()
                 continue
 
-            cleared_threshold = (
-                result.outcome == StrategyOutcome.SUCCESS
-                and result.confidence >= self.config.threshold_for(strategy_name)
-            )
+            with tracer.start_as_current_span("planner.confidence_evaluation") as span:
+                threshold = self.config.threshold_for(strategy_name)
+                cleared_threshold = (
+                    result.outcome == StrategyOutcome.SUCCESS
+                    and result.confidence >= threshold
+                )
+                span.set_attribute("cekp.strategy", strategy_name.value)
+                span.set_attribute("cekp.confidence", float(result.confidence))
+                span.set_attribute("cekp.threshold", float(threshold))
+                span.set_attribute("cekp.cleared_threshold", bool(cleared_threshold))
             # Explicit native-type casts here, at the single point every
             # strategy's confidence flows through, rather than trusting
             # each strategy to do it. This is defense-in-depth: hybrid_search.py
@@ -182,6 +207,16 @@ class Planner:
                 ).observe(float(result.latency_ms) / 1000.0)
 
             if cleared_threshold:
+                RETRIEVAL_STRATEGY_TOTAL.labels(
+                    strategy=result.strategy_name.value
+                ).inc()
+                QUERY_OUTCOME_TOTAL.labels(
+                    outcome=PlannerOutcome.SUCCESS.value
+                ).inc()
+                if result.confidence is not None:
+                    PLANNER_CONFIDENCE.observe(float(result.confidence))
+                RETRIEVED_DOCUMENTS.observe(len(result.documents))
+
                 return PlannerResult(
                     outcome=PlannerOutcome.SUCCESS,
                     result=result,
@@ -200,26 +235,6 @@ class Planner:
         return PlannerResult(
             outcome=final_outcome,
             result=None,
-            attempts=attempts,
-            ranked_strategies=ranked_values,
-        )
-
-        RETRIEVAL_STRATEGY_TOTAL.labels(
-            strategy=result.strategy_name.value
-        ).inc()
-
-        QUERY_OUTCOME_TOTAL.labels(
-            outcome=PlannerOutcome.SUCCESS.value
-        ).inc()
-
-        if result.confidence is not None:
-            PLANNER_CONFIDENCE.observe(float(result.confidence))
-
-        RETRIEVED_DOCUMENTS.observe(len(result.documents))
-
-        return PlannerResult(
-            outcome=PlannerOutcome.SUCCESS,
-            result=result,
             attempts=attempts,
             ranked_strategies=ranked_values,
         )
