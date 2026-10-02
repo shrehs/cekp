@@ -43,8 +43,8 @@
       "gridPos": { "h": 7, "w": 8, "x": 8, "y": 7 },
       "id": 4,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum by (strategy) (rate(cekp_retrieval_strategy_total[5m]))", "legendFormat": "{{strategy}}", "refId": "A" }],
-      "title": "Retrieval Strategy Usage",
+      "targets": [{ "expr": "sum by (strategy) (rate(cekp_retrieval_attempts_total[5m]))", "legendFormat": "{{strategy}}", "refId": "A" }],
+      "title": "Retrieval Strategy Attempts",
       "type": "timeseries"
     },
     {
