@@ -10,3 +10,29 @@ This gives you four useful dashboard layers:
 | `cekp_retrieved_documents`        | How much evidence is being returned?                             |
 | `cekp_planner_confidence`         | How confident is the planner?                                    |
 | `cekp_query_duration_seconds`     | What is actual end-to-end query latency?                         |
+
+The architecture on observibility:
+Windows/browser
+      │
+      │ localhost:8080
+      ▼
+ CEKP API container
+      │
+      │ :8000
+      ▼
+ Prometheus ──────► api:8000/metrics
+
+metrics pipeline is now working end-to-end:
+/query
+   ↓
+QUERY_TOTAL / ACTIVE_QUERIES
+   ↓
+Planner
+   ├── vector → success
+   ├── hybrid → success
+   └── graph → denied_by_policy
+          ↓
+Prometheus counters
+          ↓
+Grafana
+
