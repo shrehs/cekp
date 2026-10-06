@@ -23,7 +23,7 @@ value.)
 """
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -89,7 +89,11 @@ async def query(request: QueryRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/trace")
-async def query_trace(request: QueryRequest, db: Session = Depends(get_db)):
+async def query_trace(
+    http_request: Request,
+    request: QueryRequest,
+    db: Session = Depends(get_db),
+):
     if not settings.trace_endpoint_enabled:
         raise HTTPException(status_code=404, detail="Not found")
 
@@ -100,7 +104,13 @@ async def query_trace(request: QueryRequest, db: Session = Depends(get_db)):
 
     try:
         planner_result = _plan_and_log(request, db)
-        trace = build_trace_response(planner_result)
+        trace = build_trace_response(
+            planner_result,
+            request_id=getattr(http_request.state, "request_id", None),
+            http_status=200,
+            http_outcome="ok",
+            http_latency_ms=(time.perf_counter() - start) * 1000,
+        )
         return {"question": request.question, **trace}
     finally:
         QUERY_DURATION.observe(time.perf_counter() - start)

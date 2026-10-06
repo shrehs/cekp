@@ -41,8 +41,14 @@ class QueryMetric:
     actual_strategy: str
     confidence: float | None
     latency_ms: float
+    http_status: int
+    http_outcome: str
+    planner_outcome: str
+    evidence_outcome: str
+    policy_outcome: str
     outcome: str
     num_results: int
+    strategy_attempts: list[str]
     evidence_backed_success: bool
     top_result_relevant: bool | None  # True/False/None (unevaluated)
     notes: str = ""
@@ -308,26 +314,48 @@ def extract_metrics(test_case: dict, trace_response: dict) -> QueryMetric:
     latency_ms = trace_response.get("_latency_ms", 0)
     http_status = trace_response.get("_http_status", 0)
     
-    # Determine outcome and strategy used
-    planner_outcome = trace_response.get("planner_outcome") or "failed"
+    # Freeze the outcome dimensions independently. Never infer a planner
+    # success from HTTP 200, or evidence from a strategy-level success.
+    planner_outcome = trace_response.get("planner_outcome") or "not_evaluated"
+    if http_status == 200:
+        http_outcome = "ok"
+    elif http_status == 404:
+        http_outcome = "endpoint_disabled"
+    elif http_status == 0:
+        http_outcome = "transport_error"
+    else:
+        http_outcome = "http_error"
 
     actual_strategy = trace_response.get("final_strategy_used") or "none"
     confidence = trace_response.get("final_confidence")
 
-    # If the request itself failed, override the planner outcome
-    if http_status == 404:
-        outcome = "endpoint_disabled"
-    elif http_status != 200:
-        outcome = "http_error"
-    else:
-        outcome = planner_outcome or "failed"
+    outcome = planner_outcome if http_status == 200 else "not_evaluated"
 
     # Real document count from the planner (see final_documents_count in
     # planner.py's build_trace_response), not a 1/0 placeholder keyed off
     # `outcome`. A success with 3 documents and a success with 1 document
     # now read differently; a no_evidence outcome always reads 0.
     num_results = trace_response.get("final_documents_count", 0)
-    evidence_backed_success = outcome == "success" and num_results > 0
+    evidence_outcome = trace_response.get("evidence_outcome")
+    if evidence_outcome is None:
+        evidence_outcome = "evidence_backed" if num_results > 0 else "no_evidence"
+    evidence_backed_success = (
+        planner_outcome == "success" and evidence_outcome == "evidence_backed"
+    )
+
+    attempt_outcomes = [attempt.get("outcome") for attempt in attempts]
+    denied_count = attempt_outcomes.count("denied_by_policy")
+    if not attempts:
+        policy_outcome = "not_evaluated"
+    elif denied_count == len(attempts):
+        policy_outcome = "denied"
+    elif denied_count:
+        policy_outcome = "mixed"
+    else:
+        policy_outcome = "allowed"
+    strategy_attempts = [
+        attempt.get("strategy") for attempt in attempts if attempt.get("strategy")
+    ]
     
     # Check if top result is relevant (manual feedback)
     top_result_relevant = None
@@ -352,8 +380,14 @@ def extract_metrics(test_case: dict, trace_response: dict) -> QueryMetric:
         actual_strategy=actual_strategy,
         confidence=confidence,
         latency_ms=latency_ms,
+        http_status=http_status,
+        http_outcome=http_outcome,
+        planner_outcome=planner_outcome,
+        evidence_outcome=evidence_outcome,
+        policy_outcome=policy_outcome,
         outcome=outcome,
         num_results=num_results,
+        strategy_attempts=strategy_attempts,
         evidence_backed_success=evidence_backed_success,
         top_result_relevant=top_result_relevant,
     )
@@ -385,6 +419,18 @@ async def evaluate_suite(api_url: str = "http://localhost:8080") -> list[QueryMe
     return metrics
 
 
+def percentile(values: list[float], percentile_rank: float) -> float:
+    """Return an interpolated percentile without requiring NumPy."""
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * percentile_rank
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    fraction = position - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
+
+
 def compute_statistics(metrics: list[QueryMetric]) -> dict:
     """
     Compute aggregate statistics over all queries.
@@ -404,11 +450,15 @@ def compute_statistics(metrics: list[QueryMetric]) -> dict:
     for m in metrics:
         outcomes[m.outcome] = outcomes.get(m.outcome, 0) + 1
     
-    # Strategy distribution
+    # Strategy distributions distinguish final answers from strategies that
+    # were merely attempted during escalation.
     strategies = {}
+    attempted_strategies = {}
     for m in metrics:
         if m.actual_strategy != "none":
             strategies[m.actual_strategy] = strategies.get(m.actual_strategy, 0) + 1
+        for strategy in m.strategy_attempts:
+            attempted_strategies[strategy] = attempted_strategies.get(strategy, 0) + 1
     
     # Category breakdown
     categories = {}
@@ -422,9 +472,15 @@ def compute_statistics(metrics: list[QueryMetric]) -> dict:
     # Confidence scores (where applicable)
     confidences = [m.confidence for m in metrics if m.confidence is not None]
     
+    http_errors = [m for m in metrics if m.http_outcome in {"http_error", "transport_error"}]
+    policy_denied = [m for m in metrics if m.policy_outcome == "denied"]
+    no_evidence = [m for m in metrics if m.evidence_outcome == "no_evidence"]
+    document_counts = [m.num_results for m in metrics]
+
     return {
         "total_queries": len(metrics),
         "success_count": len(successful),
+        "planner_success_rate": len(successful) / len(metrics) if metrics else 0,
         "success_rate": len(successful) / len(metrics) if metrics else 0,
         "with_evidence_count": len(with_evidence),
         "evidence_rate": len(with_evidence) / len(metrics) if metrics else 0,
@@ -441,12 +497,26 @@ def compute_statistics(metrics: list[QueryMetric]) -> dict:
             len(relevant_results) / len(evaluated_relevance)
             if evaluated_relevance else None
         ),
+        "no_evidence_count": len(no_evidence),
+        "no_evidence_rate": len(no_evidence) / len(metrics) if metrics else 0,
+        "policy_denied_count": len(policy_denied),
+        "policy_denied_rate": len(policy_denied) / len(metrics) if metrics else 0,
+        "http_error_count": len(http_errors),
+        "http_error_rate": len(http_errors) / len(metrics) if metrics else 0,
         "latency": {
             "min_ms": min(latencies),
             "max_ms": max(latencies),
             "mean_ms": statistics.mean(latencies),
             "median_ms": statistics.median(latencies),
+            "p50_ms": percentile(latencies, 0.50),
+            "p95_ms": percentile(latencies, 0.95),
+            "p99_ms": percentile(latencies, 0.99),
             "stdev_ms": statistics.stdev(latencies) if len(latencies) > 1 else 0,
+        },
+        "final_documents": {
+            "min": min(document_counts),
+            "max": max(document_counts),
+            "mean": statistics.mean(document_counts),
         },
         "confidence": {
             "mean": statistics.mean(confidences) if confidences else None,
@@ -456,6 +526,7 @@ def compute_statistics(metrics: list[QueryMetric]) -> dict:
         },
         "outcome_distribution": outcomes,
         "strategy_distribution": strategies,
+        "attempted_strategy_distribution": attempted_strategies,
         "category_breakdown": categories,
     }
 
@@ -477,13 +548,16 @@ def generate_markdown_report(metrics: list[QueryMetric], stats: dict) -> str:
     # Key Metrics
     report.append("### Key Metrics\n")
     report.append(f"- **Total Queries:** {stats['total_queries']}")
-    report.append(f"- **Success Rate:** {stats['success_rate']*100:.1f}% ({stats['success_count']}/{stats['total_queries']})")
+    report.append(f"- **Planner Success Rate:** {stats['planner_success_rate']*100:.1f}% ({stats['success_count']}/{stats['total_queries']})")
     report.append(f"- **Evidence Found:** {stats['evidence_rate']*100:.1f}% ({stats['with_evidence_count']}/{stats['total_queries']})")
     report.append(f"- **Evidence-backed Success:** {stats['evidence_backed_success_rate']*100:.1f}% ({stats['evidence_backed_success_count']}/{stats['total_queries']})")
+    report.append(f"- **No Evidence:** {stats['no_evidence_rate']*100:.1f}% ({stats['no_evidence_count']}/{stats['total_queries']})")
+    report.append(f"- **Policy Denied:** {stats['policy_denied_rate']*100:.1f}% ({stats['policy_denied_count']}/{stats['total_queries']})")
+    report.append(f"- **HTTP/Infrastructure Errors:** {stats['http_error_rate']*100:.1f}% ({stats['http_error_count']}/{stats['total_queries']})")
     report.append(f"- **Success Without Evidence:** {stats['success_without_evidence_count']}")
     if stats["relevance_rate"] is not None:
         report.append(f"- **Evaluated Relevance:** {stats['relevance_rate']*100:.1f}% ({stats['relevant_result_count']}/{stats['evaluated_relevance_count']})")
-    report.append(f"- **Avg Latency:** {stats['latency']['mean_ms']:.0f}ms (median: {stats['latency']['median_ms']:.0f}ms)")
+    report.append(f"- **Latency:** p50 {stats['latency']['p50_ms']:.0f}ms / p95 {stats['latency']['p95_ms']:.0f}ms / p99 {stats['latency']['p99_ms']:.0f}ms")
     report.append(f"- **Latency Range:** {stats['latency']['min_ms']:.0f}ms - {stats['latency']['max_ms']:.0f}ms\n")
     
     # Confidence Analysis
@@ -505,6 +579,10 @@ def generate_markdown_report(metrics: list[QueryMetric], stats: dict) -> str:
     for strategy, count in sorted(stats['strategy_distribution'].items(), key=lambda x: -x[1]):
         pct = count / stats['total_queries'] * 100
         report.append(f"- **{strategy}:** {count} queries ({pct:.1f}%)")
+    report.append("")
+    report.append("### Attempted Strategy Distribution\n")
+    for strategy, count in sorted(stats['attempted_strategy_distribution'].items(), key=lambda x: -x[1]):
+        report.append(f"- **{strategy}:** {count} attempts")
     report.append("")
     
     # Category Performance
@@ -609,8 +687,15 @@ async def main():
                         "actual_strategy": m.actual_strategy,
                         "confidence": m.confidence,
                         "latency_ms": m.latency_ms,
+                        "http_status": m.http_status,
+                        "http_outcome": m.http_outcome,
+                        "planner_outcome": m.planner_outcome,
+                        "evidence_outcome": m.evidence_outcome,
+                        "policy_outcome": m.policy_outcome,
                         "outcome": m.outcome,
                         "num_results": m.num_results,
+                        "strategy_attempts": m.strategy_attempts,
+                        "evidence_backed_success": m.evidence_backed_success,
                         "top_result_relevant": m.top_result_relevant,
                     }
                     for m in metrics

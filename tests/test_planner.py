@@ -197,6 +197,10 @@ def test_trace_response_shows_access_denied_plainly_unlike_user_response():
     user_response = build_user_response(planner_result)
 
     assert trace["planner_outcome"] == "access_denied"
+    assert trace["trace_version"] == "2"
+    assert trace["evidence_outcome"] == "no_evidence"
+    assert trace["policy_outcome"] == "denied"
+    assert trace["selected_strategy"] is None
     assert trace["attempts"][0]["outcome"] == "denied_by_policy"
     # But the user-facing response never says so:
     assert user_response["answer_available"] is False

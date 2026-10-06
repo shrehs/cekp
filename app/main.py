@@ -30,6 +30,7 @@ logger = logging.getLogger("cekp")
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    request.state.request_id = request_id
     start_time = time.perf_counter()
 
     try:

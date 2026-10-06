@@ -253,7 +253,13 @@ class Planner:
         return PlannerOutcome.NO_EVIDENCE
 
 
-def build_trace_response(planner_result: PlannerResult) -> dict:
+def build_trace_response(
+    planner_result: PlannerResult,
+    request_id: str | None = None,
+    http_status: int | None = None,
+    http_outcome: str | None = None,
+    http_latency_ms: float | None = None,
+) -> dict:
     """
     Full internal trace -- deliberately NOT redacted (shows ACCESS_DENIED
     plainly, unlike build_user_response()). This is meant for debugging,
@@ -268,10 +274,40 @@ def build_trace_response(planner_result: PlannerResult) -> dict:
     is a different number and was previously being used as a stand-in
     for this by mistake.
     """
+    attempts = planner_result.attempts
+    denied_count = sum(
+        attempt["outcome"] == StrategyOutcome.DENIED_BY_POLICY.value
+        for attempt in attempts
+    )
+    if not attempts:
+        policy_outcome = "not_evaluated"
+    elif denied_count == len(attempts):
+        policy_outcome = "denied"
+    elif denied_count:
+        policy_outcome = "mixed"
+    else:
+        policy_outcome = "allowed"
+
+    evidence_outcome = (
+        "evidence_backed"
+        if planner_result.result is not None and planner_result.result.documents
+        else "no_evidence"
+    )
+
     return {
+        "trace_version": "2",
+        "request_id": request_id,
+        "http_status": http_status,
+        "http_outcome": http_outcome,
+        "http_latency_ms": http_latency_ms,
         "ranked_strategies": planner_result.ranked_strategies,
-        "attempts": planner_result.attempts,
+        "attempts": attempts,
         "planner_outcome": planner_result.outcome.value,
+        "evidence_outcome": evidence_outcome,
+        "policy_outcome": policy_outcome,
+        "selected_strategy": (
+            planner_result.result.strategy_name.value if planner_result.result else None
+        ),
         "final_strategy_used": (
             planner_result.result.strategy_name.value if planner_result.result else None
         ),

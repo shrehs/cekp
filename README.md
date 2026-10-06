@@ -129,6 +129,10 @@ The automated suite currently reports **150 passed**. `pytest.ini` limits discov
 to the application tests and excludes live endpoint smoke scripts that require the
 Docker stack to be running. Those scripts remain manual checks.
 
+Evaluation results use separate HTTP, planner, evidence, policy, retrieval, and
+latency dimensions. The evaluator records p50/p95/p99 latency and distinguishes a
+strategy-level success from an evidence-backed final answer.
+
 ## Health & Readiness
 Health check:
 ``` bash

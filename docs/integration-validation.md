@@ -28,6 +28,27 @@ dashboard, and a traced query produced Prometheus samples plus OpenTelemetry
 trace IDs in API logs. The fresh no-cache API image build completed with the
 CPU-only Torch wheel, and the rebuilt API exported query spans to Jaeger.
 
+## Evaluation Semantics
+
+Every `/query/trace` result now preserves these dimensions independently:
+
+| Dimension | Meaning |
+|---|---|
+| `http_outcome` | Transport or HTTP result: `ok`, `endpoint_disabled`, `http_error`, or `transport_error` |
+| `planner_outcome` | Planner decision: `success`, `no_evidence`, `access_denied`, or `failed` |
+| `evidence_outcome` | Whether the final result contains evidence: `evidence_backed` or `no_evidence` |
+| `policy_outcome` | `allowed`, `mixed`, `denied`, or `not_evaluated` |
+| `selected_strategy` | Strategy that cleared the planner threshold, if any |
+| `final_documents_count` | Number of documents in the accepted final result |
+| `final_confidence` | Confidence associated with the accepted final result |
+| `http_latency_ms` | End-to-end request latency measured by the API |
+
+The evaluator reports planner success, evidence-backed success, no-evidence,
+policy-denied, HTTP/infrastructure errors, p50/p95/p99 latency, attempted and
+selected strategy distributions, final document counts, and confidence. This
+prevents a strategy-level `success` with below-threshold evidence from being
+counted as a successful answer.
+
 ---
 
 ## Planner
