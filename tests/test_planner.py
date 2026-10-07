@@ -222,7 +222,7 @@ def test_strategy_exception_is_caught_and_recorded_as_error():
     assert result.result.strategy_name == StrategyName.VECTOR
 
 
-def test_vector_strategy_degrades_to_low_confidence_when_qdrant_is_unreachable(monkeypatch):
+def test_vector_strategy_returns_error_when_qdrant_is_unreachable(monkeypatch):
     def boom(_query):
         raise ConnectionError("[Errno 11001] getaddrinfo failed")
 
@@ -231,7 +231,7 @@ def test_vector_strategy_degrades_to_low_confidence_when_qdrant_is_unreachable(m
 
     result = VectorStrategy().retrieve(_ctx())
 
-    assert result.outcome == StrategyOutcome.LOW_CONFIDENCE
+    assert result.outcome == StrategyOutcome.ERROR
     assert result.documents == []
     assert result.confidence == 0.0
 

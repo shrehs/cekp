@@ -40,9 +40,14 @@ def _run_and_log(session, query: str, method_name: str, **params):
     distinct from GraphStrategy's retrieval_ms, which bundles this same
     call together with network round-trip and is reported per-request
     via /query/trace, not per-line in logs.
+
+    timeout=5 applies to the server-side query execution deadline sent
+    via the Bolt protocol. For a paused/unresponsive Neo4j this causes
+    the driver to raise ServiceUnavailable after ~5s rather than hanging
+    for the full driver-level connection_timeout (30s default).
     """
     start = time.perf_counter()
-    result = session.run(query, **params)
+    result = session.run(query, timeout=5, **params)
     records = list(result)  # materialize now so the timer reflects actual query completion, not lazy iteration later
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.debug("Neo4jGraphRetriever.%s: %.2fms, %d record(s)", method_name, elapsed_ms, len(records))

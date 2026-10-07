@@ -1,0 +1,839 @@
+{
+  "timestamp": "2026-10-07T05:11:28.414815",
+  "phases": [
+    {
+      "phase": "0_baseline",
+      "description": "Verify Graph is healthy and the system is in a known good state.",
+      "queries": [
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "success",
+            "evidence_outcome": "evidence_backed",
+            "selected_strategy": "graph",
+            "final_documents_count": 4,
+            "final_confidence": 0.85,
+            "final_latency_ms": 219.78762300022936,
+            "inferred_states": {
+              "graph": "healthy"
+            },
+            "interventions": [],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "success",
+                "confidence": 0.85,
+                "latency_ms": 219.78762300022936
+              }
+            ],
+            "_error": null
+          }
+        }
+      ],
+      "metrics_snapshot": {
+        "strategy_state_graph": null,
+        "strategy_state_hybrid": null,
+        "recovery_attempts_graph": null,
+        "recovery_success_graph_hybrid": null,
+        "retrieval_attempts_graph_error": null,
+        "retrieval_attempts_graph_skipped": null
+      },
+      "observations": [
+        "planner_outcome: success",
+        "evidence_outcome: evidence_backed",
+        "graph inferred_state: healthy",
+        "graph attempted (not skipped): True",
+        "selected_strategy: graph",
+        "documents: 4"
+      ],
+      "passed": true
+    },
+    {
+      "phase": "1_inject_failures",
+      "description": "Pause Neo4j, send 10 graph queries to drive monitor to UNAVAILABLE.",
+      "queries": [
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "failed",
+            "evidence_outcome": "not_evaluated",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {},
+            "interventions": [],
+            "attempts": [],
+            "_error": "timeout"
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "failed",
+            "evidence_outcome": "not_evaluated",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {},
+            "interventions": [],
+            "attempts": [],
+            "_error": "timeout"
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "failed",
+            "evidence_outcome": "not_evaluated",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {},
+            "interventions": [],
+            "attempts": [],
+            "_error": "timeout"
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "failed",
+            "evidence_outcome": "not_evaluated",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {},
+            "interventions": [],
+            "attempts": [],
+            "_error": "timeout"
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "failed",
+            "evidence_outcome": "not_evaluated",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {},
+            "interventions": [],
+            "attempts": [],
+            "_error": "timeout"
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "failed",
+            "evidence_outcome": "not_evaluated",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {},
+            "interventions": [],
+            "attempts": [],
+            "_error": "timeout"
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "degraded"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 10.873801999878197
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "degraded"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 29.912493999290746
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "degraded"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 31.727033000606752
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "degraded"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 23.68368699990242
+              }
+            ],
+            "_error": null
+          }
+        }
+      ],
+      "metrics_snapshot": {
+        "strategy_state_graph": 2.0,
+        "strategy_state_hybrid": null,
+        "recovery_attempts_graph": 4.0,
+        "recovery_success_graph_hybrid": null,
+        "retrieval_attempts_graph_error": 2.0,
+        "retrieval_attempts_graph_skipped": 4.0
+      },
+      "observations": [
+        "Neo4j container paused: docker-neo4j-1",
+        "queries sent: 10",
+        "graph error/skip outcomes: 4/10"
+      ],
+      "passed": false
+    },
+    {
+      "phase": "2_observe_skip",
+      "description": "Verify Graph is skipped (UNAVAILABLE) and Hybrid fallback returns evidence.",
+      "queries": [
+        {
+          "question": "How does the intent classifier decide what strategy to use?",
+          "trace": {
+            "planner_outcome": "success",
+            "evidence_outcome": "evidence_backed",
+            "selected_strategy": "hybrid",
+            "final_documents_count": 5,
+            "final_confidence": 0.8359,
+            "final_latency_ms": 109.69495800054574,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "degraded",
+              "hybrid": "healthy"
+            },
+            "interventions": [],
+            "attempts": [
+              {
+                "strategy": "hybrid",
+                "outcome": "success",
+                "confidence": 0.8359,
+                "latency_ms": 109.69495800054574
+              }
+            ],
+            "_error": null
+          }
+        }
+      ],
+      "metrics_snapshot": {
+        "strategy_state_graph": 2.0,
+        "strategy_state_hybrid": null,
+        "recovery_attempts_graph": 4.0,
+        "recovery_success_graph_hybrid": null,
+        "retrieval_attempts_graph_error": 2.0,
+        "retrieval_attempts_graph_skipped": 4.0
+      },
+      "observations": [
+        "query: How does the intent classifier decide what strategy to use?",
+        "graph inferred_state: unavailable",
+        "graph skipped: False",
+        "intervention recorded: False",
+        "fallback strategy: hybrid",
+        "planner_outcome: success",
+        "evidence_outcome: evidence_backed",
+        "documents: 5"
+      ],
+      "passed": false
+    },
+    {
+      "phase": "3_restore",
+      "description": "Unpause Neo4j, send 10 successful graph queries to restore HEALTHY state.",
+      "queries": [
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 50.04065399953106
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 35.05494000000908
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 21.34745799958182
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 21.74854300028528
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 21.84259200021188
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 21.764191999864124
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 35.6945560006352
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 19.260782999481307
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 20.373497999571555
+              }
+            ],
+            "_error": null
+          }
+        },
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 22.17840299999807
+              }
+            ],
+            "_error": null
+          }
+        }
+      ],
+      "metrics_snapshot": {
+        "strategy_state_graph": 2.0,
+        "strategy_state_hybrid": 0.0,
+        "recovery_attempts_graph": 8.0,
+        "recovery_success_graph_hybrid": null,
+        "retrieval_attempts_graph_error": 2.0,
+        "retrieval_attempts_graph_skipped": 8.0
+      },
+      "observations": [
+        "Neo4j container unpaused: docker-neo4j-1",
+        "restore queries sent: 10",
+        "graph non-error outcomes: 0/10"
+      ],
+      "passed": false
+    },
+    {
+      "phase": "4_verify_recovery",
+      "description": "Verify Graph is HEALTHY again and attempted without intervention.",
+      "queries": [
+        {
+          "question": "What does app.main import?",
+          "trace": {
+            "planner_outcome": "no_evidence",
+            "evidence_outcome": "no_evidence",
+            "selected_strategy": null,
+            "final_documents_count": 0,
+            "final_confidence": null,
+            "final_latency_ms": null,
+            "inferred_states": {
+              "graph": "unavailable",
+              "vector": "healthy",
+              "hybrid": "healthy"
+            },
+            "interventions": [
+              {
+                "strategy": "graph",
+                "inferred_state": "unavailable",
+                "decision": "skip",
+                "reason": "inferred_unavailable"
+              }
+            ],
+            "attempts": [
+              {
+                "strategy": "graph",
+                "outcome": "skipped_unavailable",
+                "confidence": null,
+                "latency_ms": null
+              },
+              {
+                "strategy": "vector",
+                "outcome": "success",
+                "confidence": 0.3629806,
+                "latency_ms": 47.14370700003201
+              }
+            ],
+            "_error": null
+          }
+        }
+      ],
+      "metrics_snapshot": {
+        "strategy_state_graph": 2.0,
+        "strategy_state_hybrid": 0.0,
+        "recovery_attempts_graph": 8.0,
+        "recovery_success_graph_hybrid": null,
+        "retrieval_attempts_graph_error": 2.0,
+        "retrieval_attempts_graph_skipped": 8.0
+      },
+      "observations": [
+        "graph inferred_state: unavailable",
+        "graph attempted (not skipped): False",
+        "no intervention: False",
+        "planner_outcome: no_evidence",
+        "evidence_outcome: no_evidence",
+        "selected_strategy: None"
+      ],
+      "passed": false
+    }
+  ],
+  "conclusion": "Fallback did not work as expected. Either the monitor did not reach UNAVAILABLE (not enough errors recorded) or the Hybrid strategy did not return evidence. Check the phase 2 trace for details.",
+  "passed": false
+}

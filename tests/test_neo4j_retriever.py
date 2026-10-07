@@ -74,7 +74,7 @@ def test_get_module_imports_uses_fuzzy_match_where_clause_and_correct_params():
     assert "MATCH (node:Module)" in query
     assert "qualified_name = $ref" in query
     assert "qualified_name ENDS WITH $suffix" in query
-    assert params == {"ref": "config", "suffix": ".config"}
+    assert params == {"ref": "config", "suffix": ".config", "timeout": 5}
 
     assert len(results) == 1
     assert isinstance(results[0], ModuleNode)
@@ -151,7 +151,7 @@ def test_get_callers_of_two_query_shape_resolves_target_then_finds_callers():
     query, params = driver.last_session.calls[0]
     assert "MATCH (target:Function)" in query
     assert "MATCH (caller:Function)-[:CALLS]->(target)" in query
-    assert params == {"ref": "health", "suffix": ".health"}
+    assert params == {"ref": "health", "suffix": ".health", "timeout": 5}
     assert len(results) == 1
     assert results[0].qualified_name == "app.main.on_startup"
 

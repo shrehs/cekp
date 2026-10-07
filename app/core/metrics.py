@@ -93,3 +93,49 @@ ACTIVE_QUERIES = Gauge(
     "cekp_active_queries",
     "Number of CEKP queries currently being processed.",
 )
+
+HTTP_OUTCOME_TOTAL = Counter(
+    "cekp_http_outcomes_total",
+    "CEKP HTTP request outcomes by status code.",
+    ["outcome", "status_code"],
+)
+
+EVIDENCE_OUTCOME_TOTAL = Counter(
+    "cekp_evidence_outcomes_total",
+    "Final evidence outcome for CEKP queries.",
+    ["outcome"],
+)
+
+POLICY_OUTCOME_TOTAL = Counter(
+    "cekp_policy_outcomes_total",
+    "Final policy outcome for CEKP queries.",
+    ["outcome"],
+)
+
+# ---------------------------------------------------------------------------
+# Recovery metrics
+# ---------------------------------------------------------------------------
+
+RECOVERY_ATTEMPTS_TOTAL = Counter(
+    "cekp_recovery_attempts_total",
+    "Number of times the planner skipped a strategy due to inferred UNAVAILABLE state.",
+    ["strategy"],
+)
+
+RECOVERY_SUCCESS_TOTAL = Counter(
+    "cekp_recovery_success_total",
+    "Number of times a fallback strategy succeeded after a skip.",
+    ["skipped_strategy", "fallback_strategy"],
+)
+
+RECOVERY_DURATION = Histogram(
+    "cekp_recovery_duration_seconds",
+    "Time from first skip to successful fallback resolution.",
+    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
+
+STRATEGY_STATE = Gauge(
+    "cekp_strategy_state",
+    "Inferred operating state for each strategy (0=healthy, 1=degraded, 2=unavailable).",
+    ["strategy"],
+)

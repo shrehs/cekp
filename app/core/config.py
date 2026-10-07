@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "cekp_dev_password"
 
+    # Timeouts
+    qdrant_timeout_seconds: float = 5.0
+    neo4j_connection_timeout_seconds: float = 5.0
+    neo4j_max_transaction_retry_seconds: float = 10.0
+
     # Embeddings
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dim: int = 384

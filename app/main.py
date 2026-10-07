@@ -12,6 +12,7 @@ import uuid
 from app.core.logging import configure_logging
 from app.core.telemetry import configure_telemetry
 from prometheus_fastapi_instrumentator import Instrumentator
+from app.core.metrics import HTTP_OUTCOME_TOTAL
 
 configure_logging()
 
@@ -53,6 +54,10 @@ async def request_logging_middleware(request: Request, call_next):
         )
 
         response.headers["X-Request-ID"] = request_id
+        HTTP_OUTCOME_TOTAL.labels(
+            outcome="ok" if response.status_code < 400 else "error",
+            status_code=str(response.status_code),
+        ).inc()
 
         return response
 
@@ -71,6 +76,7 @@ async def request_logging_middleware(request: Request, call_next):
                 "duration_ms": duration_ms,
             },
         )
+        HTTP_OUTCOME_TOTAL.labels(outcome="error", status_code="500").inc()
 
         raise
 

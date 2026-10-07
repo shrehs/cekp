@@ -7,3 +7,4 @@ data/uploads/*
 *.egg-info/
 
 cekp/
+.amazonq

@@ -44,6 +44,8 @@ from app.core.metrics import (
     QUERY_DURATION,
     ACTIVE_QUERIES,
 )
+from app.planner.enums import PlannerOutcome, StrategyName, StrategyOutcome
+from app.planner.planner import _policy_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +74,46 @@ def _plan_and_log(request: QueryRequest, db: Session) -> PlannerResult:
     return planner_result
 
 
+def _log_query_outcome(
+    request_id: str | None,
+    planner_result: "PlannerResult",
+    latency_ms: float,
+) -> None:
+    """Emit one structured log line per query with all observable dimensions."""
+    r = planner_result.result
+    if planner_result.outcome == PlannerOutcome.FAILED:
+        evidence_outcome = "not_evaluated"
+    else:
+        evidence_outcome = "evidence_backed" if (r and r.documents) else "no_evidence"
+
+    logger.info(
+        "query_outcome",
+        extra={
+            "request_id": request_id,
+            "planner_outcome": planner_result.outcome.value,
+            "evidence_outcome": evidence_outcome,
+            "policy_outcome": _policy_outcome(planner_result.attempts),
+            "selected_strategy": r.strategy_name.value if r else None,
+            "ranked_strategies": planner_result.ranked_strategies,
+            "final_confidence": float(r.confidence) if r and r.confidence is not None else None,
+            "final_documents_count": len(r.documents) if r else 0,
+            "latency_ms": round(latency_ms, 2),
+        },
+    )
+
+
 @router.post("")
-async def query(request: QueryRequest, db: Session = Depends(get_db)):
+async def query(http_request: Request, request: QueryRequest, db: Session = Depends(get_db)):
     start = time.perf_counter()
+    request_id = getattr(http_request.state, "request_id", None)
 
     QUERY_TOTAL.inc()
     ACTIVE_QUERIES.inc()
 
     try:
         planner_result = _plan_and_log(request, db)
+        latency_ms = (time.perf_counter() - start) * 1000
+        _log_query_outcome(request_id, planner_result, latency_ms)
         response = build_user_response(planner_result)
         return {"question": request.question, **response}
     finally:
@@ -104,14 +137,53 @@ async def query_trace(
 
     try:
         planner_result = _plan_and_log(request, db)
+        latency_ms = (time.perf_counter() - start) * 1000
+        _log_query_outcome(getattr(http_request.state, "request_id", None), planner_result, latency_ms)
         trace = build_trace_response(
             planner_result,
             request_id=getattr(http_request.state, "request_id", None),
             http_status=200,
             http_outcome="ok",
-            http_latency_ms=(time.perf_counter() - start) * 1000,
+            http_latency_ms=latency_ms,
         )
         return {"question": request.question, **trace}
     finally:
         QUERY_DURATION.observe(time.perf_counter() - start)
         ACTIVE_QUERIES.dec()
+
+
+@router.get("/monitor")
+async def monitor_state():
+    """
+    Return the current inferred state for all observed strategies.
+    Gated behind trace_endpoint_enabled -- internal use only.
+    """
+    if not settings.trace_endpoint_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"inferred_states": _planner.monitor.snapshot()}
+
+
+@router.post("/monitor/probe")
+async def monitor_probe(strategy: str, n: int = 10):
+    """
+    Record n synthetic SUCCESS observations for a strategy.
+
+    Breaks the recovery deadlock: when a strategy is UNAVAILABLE the
+    planner skips it, so no real observations flow in and the window
+    never ages out. Call this after independently confirming the
+    dependency is reachable (e.g. /ready shows neo4j: ok).
+
+    Gated behind trace_endpoint_enabled -- never expose in production.
+    """
+    if not settings.trace_endpoint_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        strategy_name = StrategyName(strategy)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Unknown strategy: {strategy}")
+    _planner.monitor.probe_healthy(strategy_name, n=n)
+    return {
+        "strategy": strategy,
+        "probed_successes": n,
+        "state": _planner.monitor.state(strategy_name).value,
+    }

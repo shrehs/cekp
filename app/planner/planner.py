@@ -18,12 +18,14 @@ you can't see it." The real reason is always visible internally via
 strategy_attempts in the audit log.
 """
 import logging
+import time
 from dataclasses import dataclass, field
 from opentelemetry import trace
 
 from app.planner.config import DEFAULT_PLANNER_CONFIG, PlannerConfig
 from app.planner.context import PlannerContext
-from app.planner.enums import PlannerOutcome, StrategyOutcome
+from app.planner.enums import PlannerOutcome, StrategyOutcome, StrategyState
+from app.planner.health import StrategyHealthMonitor
 from app.planner.intent_classifier import IntentClassifier
 from app.planner.policy_evaluator import PolicyEvaluator
 from app.planner.registry import StrategyRegistry, build_default_registry
@@ -36,6 +38,12 @@ from app.core.metrics import (
     RETRIEVAL_DURATION,
     RETRIEVED_DOCUMENTS,
     PLANNER_CONFIDENCE,
+    EVIDENCE_OUTCOME_TOTAL,
+    POLICY_OUTCOME_TOTAL,
+    RECOVERY_ATTEMPTS_TOTAL,
+    RECOVERY_SUCCESS_TOTAL,
+    RECOVERY_DURATION,
+    STRATEGY_STATE,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +56,8 @@ class PlannerResult:
     result: RetrievalResult | None
     attempts: list[dict] = field(default_factory=list)
     ranked_strategies: list[str] = field(default_factory=list)
+    inferred_states: dict[str, str] = field(default_factory=dict)   # strategy -> StrategyState.value
+    interventions: list[dict] = field(default_factory=list)          # skips due to UNAVAILABLE state
 
 
 class Planner:
@@ -57,11 +67,13 @@ class Planner:
         classifier: IntentClassifier | None = None,
         policy: PolicyEvaluator | None = None,
         config: PlannerConfig = DEFAULT_PLANNER_CONFIG,
+        monitor: StrategyHealthMonitor | None = None,
     ):
         self.registry = registry or build_default_registry()
         self.classifier = classifier or IntentClassifier()
         self.policy = policy or PolicyEvaluator()
         self.config = config
+        self.monitor = monitor or StrategyHealthMonitor()
 
     def plan(self, context: PlannerContext) -> PlannerResult:
         with tracer.start_as_current_span("planner.intent_classification") as span:
@@ -74,20 +86,53 @@ class Planner:
         ranked_values = [s.value for s in ranked]
 
         attempts: list[dict] = []
+        interventions: list[dict] = []
+        # strategy_name of the first UNAVAILABLE skip, for recovery tracking
+        first_skipped: str | None = None
+        recovery_start: float | None = None
 
         for strategy_name in ranked:
+            # --- State inference: consult monitor before policy/retrieval ---
+            inferred = self.monitor.state(strategy_name)
+            _state_gauge_value = {StrategyState.HEALTHY: 0, StrategyState.DEGRADED: 1, StrategyState.UNAVAILABLE: 2}
+            STRATEGY_STATE.labels(strategy=strategy_name.value).set(_state_gauge_value[inferred])
+
+            if inferred == StrategyState.UNAVAILABLE:
+                intervention = {
+                    "strategy": strategy_name.value,
+                    "inferred_state": inferred.value,
+                    "decision": "skip",
+                    "reason": "inferred_unavailable",
+                }
+                interventions.append(intervention)
+                attempts.append({
+                    "strategy": strategy_name.value,
+                    "outcome": "skipped_unavailable",
+                    "confidence": None,
+                    "cleared_threshold": None,
+                    "latency_ms": None,
+                    "metadata": {"inferred_state": inferred.value},
+                })
+                RECOVERY_ATTEMPTS_TOTAL.labels(strategy=strategy_name.value).inc()
+                RETRIEVAL_ATTEMPTS_TOTAL.labels(
+                    strategy=strategy_name.value,
+                    outcome="skipped_unavailable",
+                ).inc()
+                logger.warning(
+                    "strategy_skipped_unavailable",
+                    extra={"strategy": strategy_name.value, "inferred_state": inferred.value},
+                )
+                if first_skipped is None:
+                    first_skipped = strategy_name.value
+                    recovery_start = time.perf_counter()
+                continue
+
             with tracer.start_as_current_span("planner.policy_check") as span:
                 authorized = self.policy.is_authorized(strategy_name, context)
                 span.set_attribute("cekp.strategy", strategy_name.value)
                 span.set_attribute("cekp.authorized", authorized)
 
             if not authorized:
-                # confidence=None: retrieval never ran, so there's no
-                # confidence value to report -- distinct from a strategy
-                # that ran and genuinely returned 0.0 (e.g. GraphStrategy
-                # stub before Neo4j exists). Same reasoning for
-                # latency_ms/metadata: None means "never ran", not "ran
-                # and took 0ms" or "ran with empty metadata".
                 attempts.append(
                     {
                         "strategy": strategy_name.value,
@@ -102,7 +147,6 @@ class Planner:
                     strategy=strategy_name.value,
                     outcome=StrategyOutcome.DENIED_BY_POLICY.value,
                 ).inc()
-
                 continue
 
             strategy = self.registry.get(strategy_name)
@@ -128,6 +172,7 @@ class Planner:
                     f"retrieval.strategy.{strategy_name.value}"
                 ) as span:
                     span.set_attribute("cekp.strategy", strategy_name.value)
+                    span.set_attribute("cekp.inferred_state", inferred.value)
                     result = strategy.retrieve(context)
                     span.set_attribute("cekp.outcome", result.outcome.value)
                     span.set_attribute("cekp.confidence", float(result.confidence))
@@ -138,6 +183,7 @@ class Planner:
                     strategy_name,
                     context.query,
                 )
+                self.monitor.record(strategy_name, StrategyOutcome.ERROR, None)
                 attempts.append(
                     {
                         "strategy": strategy_name.value,
@@ -154,6 +200,9 @@ class Planner:
                 ).inc()
                 continue
 
+            # Record outcome into the monitor for future state inference
+            self.monitor.record(strategy_name, result.outcome, result.latency_ms)
+
             with tracer.start_as_current_span("planner.confidence_evaluation") as span:
                 threshold = self.config.threshold_for(strategy_name)
                 cleared_threshold = (
@@ -164,33 +213,14 @@ class Planner:
                 span.set_attribute("cekp.confidence", float(result.confidence))
                 span.set_attribute("cekp.threshold", float(threshold))
                 span.set_attribute("cekp.cleared_threshold", bool(cleared_threshold))
-            # Explicit native-type casts here, at the single point every
-            # strategy's confidence flows through, rather than trusting
-            # each strategy to do it. This is defense-in-depth: hybrid_search.py
-            # already casts at its source (see that file's comment for why
-            # numpy.bool_ specifically breaks JSON serialization while
-            # numpy.float64 silently doesn't), but a future strategy could
-            # reintroduce the same bug without a check here.
+
             safe_confidence = float(result.confidence) if result.confidence is not None else None
             attempts.append(
                 {
                     "strategy": strategy_name.value,
                     "outcome": result.outcome.value,
                     "confidence": safe_confidence,
-                    # Distinct from "outcome" on purpose: a strategy can
-                    # report StrategyOutcome.SUCCESS (it found something)
-                    # while still not clearing the PLANNER's threshold for
-                    # that strategy -- see docs/confidence.md. Without this
-                    # field, the trace looked self-contradictory (a
-                    # "success" attempt sitting inside a "no_evidence"
-                    # planner_outcome) even though both were individually
-                    # correct.
                     "cleared_threshold": bool(cleared_threshold) if safe_confidence is not None else None,
-                    # Previously computed by every strategy (RetrievalResult
-                    # always carries latency_ms/metadata) but never actually
-                    # threaded through to the trace -- fixed here rather than
-                    # in each strategy, since this is the one place all of
-                    # them already flow through.
                     "latency_ms": result.latency_ms,
                     "metadata": result.metadata or None,
                 }
@@ -216,27 +246,45 @@ class Planner:
                 if result.confidence is not None:
                     PLANNER_CONFIDENCE.observe(float(result.confidence))
                 RETRIEVED_DOCUMENTS.observe(len(result.documents))
+                EVIDENCE_OUTCOME_TOTAL.labels(
+                    outcome="evidence_backed" if result.documents else "no_evidence"
+                ).inc()
+                POLICY_OUTCOME_TOTAL.labels(
+                    outcome=_policy_outcome(attempts)
+                ).inc()
+
+                # Recovery: a skip happened earlier and this strategy succeeded
+                if first_skipped is not None and recovery_start is not None:
+                    RECOVERY_SUCCESS_TOTAL.labels(
+                        skipped_strategy=first_skipped,
+                        fallback_strategy=result.strategy_name.value,
+                    ).inc()
+                    RECOVERY_DURATION.observe(time.perf_counter() - recovery_start)
 
                 return PlannerResult(
                     outcome=PlannerOutcome.SUCCESS,
                     result=result,
                     attempts=attempts,
                     ranked_strategies=ranked_values,
+                    inferred_states=self.monitor.snapshot(),
+                    interventions=interventions,
                 )
-            # LOW_CONFIDENCE, NOT_IMPLEMENTED, DENIED_BY_POLICY, ERROR, or
-            # SUCCESS-but-below-threshold: fall through to next strategy.
 
         final_outcome = self._final_outcome(attempts)
 
-        QUERY_OUTCOME_TOTAL.labels(
-            outcome=final_outcome.value
+        QUERY_OUTCOME_TOTAL.labels(outcome=final_outcome.value).inc()
+        EVIDENCE_OUTCOME_TOTAL.labels(
+            outcome="not_evaluated" if final_outcome == PlannerOutcome.FAILED else "no_evidence"
         ).inc()
+        POLICY_OUTCOME_TOTAL.labels(outcome=_policy_outcome(attempts)).inc()
 
         return PlannerResult(
             outcome=final_outcome,
             result=None,
             attempts=attempts,
             ranked_strategies=ranked_values,
+            inferred_states=self.monitor.snapshot(),
+            interventions=interventions,
         )
 
     @staticmethod
@@ -248,9 +296,23 @@ class Planner:
 
         if outcomes == {StrategyOutcome.DENIED_BY_POLICY.value}:
             return PlannerOutcome.ACCESS_DENIED
-        if outcomes == {StrategyOutcome.ERROR.value}:
+        if outcomes <= {StrategyOutcome.ERROR.value, "skipped_unavailable"}:
             return PlannerOutcome.FAILED
         return PlannerOutcome.NO_EVIDENCE
+
+
+def _policy_outcome(attempts: list[dict]) -> str:
+    if not attempts:
+        return "not_evaluated"
+    denied_count = sum(
+        attempt["outcome"] == StrategyOutcome.DENIED_BY_POLICY.value
+        for attempt in attempts
+    )
+    if denied_count == len(attempts):
+        return "denied"
+    if denied_count:
+        return "mixed"
+    return "allowed"
 
 
 def build_trace_response(
@@ -288,11 +350,14 @@ def build_trace_response(
     else:
         policy_outcome = "allowed"
 
-    evidence_outcome = (
-        "evidence_backed"
-        if planner_result.result is not None and planner_result.result.documents
-        else "no_evidence"
-    )
+    if planner_result.outcome == PlannerOutcome.FAILED:
+        evidence_outcome = "not_evaluated"
+    else:
+        evidence_outcome = (
+            "evidence_backed"
+            if planner_result.result is not None and planner_result.result.documents
+            else "no_evidence"
+        )
 
     return {
         "trace_version": "2",
@@ -301,10 +366,12 @@ def build_trace_response(
         "http_outcome": http_outcome,
         "http_latency_ms": http_latency_ms,
         "ranked_strategies": planner_result.ranked_strategies,
+        "inferred_states": planner_result.inferred_states,
+        "interventions": planner_result.interventions,
         "attempts": attempts,
         "planner_outcome": planner_result.outcome.value,
         "evidence_outcome": evidence_outcome,
-        "policy_outcome": policy_outcome,
+        "policy_outcome": _policy_outcome(attempts),
         "selected_strategy": (
             planner_result.result.strategy_name.value if planner_result.result else None
         ),

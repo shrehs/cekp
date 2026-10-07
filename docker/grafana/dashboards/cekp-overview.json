@@ -1,62 +1,242 @@
 {
-  "annotations": {
-    "list": []
-  },
+  "annotations": { "list": [] },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "links": [],
+  "links": [
+    {
+      "title": "Jaeger Traces",
+      "url": "http://localhost:16686",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "external link",
+      "tags": [],
+      "tooltip": "Open Jaeger UI to drill into request-level traces"
+    }
+  ],
   "panels": [
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "HTTP",
+      "type": "row"
+    },
+
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 0 },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 1 },
       "id": 1,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum(rate(cekp_queries_total[5m]))", "legendFormat": "queries/sec", "refId": "A" }],
+      "targets": [
+        { "expr": "sum(rate(cekp_queries_total[5m]))", "legendFormat": "queries/sec", "refId": "A" }
+      ],
       "title": "Request Volume",
       "type": "timeseries"
     },
+
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 1 },
       "id": 2,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(cekp_query_duration_seconds_bucket[5m])))", "legendFormat": "p95", "refId": "A" }, { "expr": "histogram_quantile(0.50, sum by (le) (rate(cekp_query_duration_seconds_bucket[5m])))", "legendFormat": "p50", "refId": "B" }],
-      "title": "Query Latency",
+      "targets": [
+        { "expr": "sum by (outcome, status_code) (rate(cekp_http_outcomes_total[5m]))", "legendFormat": "{{outcome}} {{status_code}}", "refId": "A" }
+      ],
+      "title": "HTTP Outcomes by Status",
       "type": "timeseries"
     },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "graphMode": "none"
+      },
+      "targets": [
+        { "expr": "sum(rate(cekp_http_outcomes_total{outcome=\"error\"}[5m])) / clamp_min(sum(rate(cekp_http_outcomes_total[5m])), 1e-9)", "legendFormat": "HTTP error rate", "refId": "A" }
+      ],
+      "title": "HTTP Error Rate",
+      "type": "gauge"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "id": 101,
+      "title": "Planner · Evidence · Policy",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 9 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum by (outcome) (rate(cekp_query_outcomes_total[5m]))", "legendFormat": "{{outcome}}", "refId": "A" }
+      ],
+      "title": "Planner Outcomes",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 9 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum by (outcome) (rate(cekp_evidence_outcomes_total[5m]))", "legendFormat": "{{outcome}}", "refId": "A" }
+      ],
+      "title": "Evidence Outcomes",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 9 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum by (outcome) (rate(cekp_policy_outcomes_total[5m]))", "legendFormat": "{{outcome}}", "refId": "A" }
+      ],
+      "title": "Policy Outcomes",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 102,
+      "title": "Strategy · Documents · Confidence",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 17 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum by (strategy) (rate(cekp_retrieval_attempts_total[5m]))", "legendFormat": "attempted · {{strategy}}", "refId": "A" },
+        { "expr": "sum by (strategy) (rate(cekp_retrieval_strategy_total[5m]))", "legendFormat": "selected · {{strategy}}", "refId": "B" }
+      ],
+      "title": "Strategy Attempted vs Selected",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 17 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(cekp_retrieved_documents_bucket[5m])))", "legendFormat": "p99 docs", "refId": "A" },
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(cekp_retrieved_documents_bucket[5m])))", "legendFormat": "p50 docs", "refId": "B" }
+      ],
+      "title": "Retrieved Documents (p50 / p99)",
+      "type": "timeseries"
+    },
+
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 7 },
-      "id": 3,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "auto" },
-      "targets": [{ "expr": "sum(rate(cekp_query_outcomes_total{outcome=~\"error|no_evidence|access_denied\"}[5m])) / clamp_min(sum(rate(cekp_query_outcomes_total[5m])), 1e-9)", "legendFormat": "failure rate", "refId": "A" }],
-      "title": "Error / Non-success Rate",
-      "type": "gauge"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 7 },
-      "id": 4,
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 17 },
+      "id": 9,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum by (strategy) (rate(cekp_retrieval_attempts_total[5m]))", "legendFormat": "{{strategy}}", "refId": "A" }],
-      "title": "Retrieval Strategy Attempts",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(cekp_planner_confidence_bucket[5m])))", "legendFormat": "p50 confidence", "refId": "A" },
+        { "expr": "histogram_quantile(0.10, sum by (le) (rate(cekp_planner_confidence_bucket[5m])))", "legendFormat": "p10 confidence", "refId": "B" }
+      ],
+      "title": "Planner Confidence Distribution",
       "type": "timeseries"
     },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 103,
+      "title": "Latency",
+      "type": "row"
+    },
+
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 7 },
-      "id": 5,
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 25 },
+      "id": 10,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum by (outcome) (rate(cekp_query_outcomes_total[5m]))", "legendFormat": "{{outcome}}", "refId": "A" }],
-      "title": "Query Outcomes",
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(cekp_query_duration_seconds_bucket[5m])))", "legendFormat": "p99", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(cekp_query_duration_seconds_bucket[5m])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(cekp_query_duration_seconds_bucket[5m])))", "legendFormat": "p50", "refId": "C" }
+      ],
+      "title": "E2E Query Latency (p50 / p95 / p99)",
       "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 25 },
+      "id": 11,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le, strategy) (rate(cekp_retrieval_duration_seconds_bucket[5m])))", "legendFormat": "p95 · {{strategy}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.50, sum by (le, strategy) (rate(cekp_retrieval_duration_seconds_bucket[5m])))", "legendFormat": "p50 · {{strategy}}", "refId": "B" }
+      ],
+      "title": "Retrieval Latency by Strategy (p50 / p95)",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 104,
+      "title": "Request Trace",
+      "type": "row"
+    },
+
+    {
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 33 },
+      "id": 12,
+      "options": {
+        "content": "## Drill into a request trace\n\nUse the **[Jaeger UI](http://localhost:16686)** to search by `request_id`.\n\nEach query emits spans for:\n- `planner.intent_classification`\n- `planner.policy_check` (per strategy)\n- `retrieval.strategy.<name>` (per strategy)\n- `planner.confidence_evaluation` (per strategy)\n\nSpan attributes include `cekp.strategy`, `cekp.confidence`, `cekp.documents_count`, `cekp.authorized`, and `cekp.cleared_threshold`.",
+        "mode": "markdown"
+      },
+      "title": "How to trace a single request",
+      "type": "text"
     }
+
   ],
   "refresh": "10s",
   "schemaVersion": 39,
@@ -68,5 +248,5 @@
   "timezone": "browser",
   "title": "CEKP Overview",
   "uid": "cekp-overview",
-  "version": 1
+  "version": 2
 }

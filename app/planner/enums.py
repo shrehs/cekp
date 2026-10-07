@@ -29,6 +29,23 @@ class StrategyOutcome(str, Enum):
     ERROR = "error"
 
 
+class StrategyState(str, Enum):
+    """
+    Inferred operating state for a single retrieval strategy, derived
+    from recent observations (outcomes + latency). Deterministic rules,
+    no ML.
+
+    HEALTHY     -- recent attempts are succeeding within normal latency.
+    DEGRADED    -- elevated error rate or high latency; still attempting
+                   but the planner should prefer alternatives.
+    UNAVAILABLE -- error rate high enough that attempting is wasteful;
+                   planner skips and records the intervention.
+    """
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"
+
+
 class PlannerOutcome(str, Enum):
     SUCCESS = "success"
     NO_EVIDENCE = "no_evidence"
