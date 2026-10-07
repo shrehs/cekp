@@ -3,10 +3,14 @@ Central configuration for CEKP.
 All environment-driven settings live here so no module reaches
 into os.environ directly.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="CEKP_",
+    )
     # App
     app_name: str = "CEKP - Connected Enterprise Knowledge Platform"
     environment: str = "local"
@@ -68,10 +72,5 @@ class Settings(BaseSettings):
         if self.enable_trace_endpoint is not None:
             return self.enable_trace_endpoint
         return self.environment.lower() in {"local", "development", "dev"}
-
-    class Config:
-        env_file = ".env"
-        env_prefix = "CEKP_"
-
 
 settings = Settings()

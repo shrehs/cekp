@@ -10,12 +10,19 @@ without touching planner logic.
 from dataclasses import dataclass
 
 from app.planner.enums import StrategyName
+from dataclasses import dataclass
+
+from app.planner.enums import StrategyName
 
 
 @dataclass(frozen=True)
 class PlannerConfig:
     thresholds: dict[StrategyName, float]
     max_escalations: int = 4
+
+    # v2.3: health-aware routing
+    health_aware_ranking: bool = True
+    degraded_health_penalty: float = 0.10
 
     def threshold_for(self, strategy_name: StrategyName) -> float:
         return self.thresholds.get(strategy_name, 0.5)
@@ -29,4 +36,8 @@ DEFAULT_PLANNER_CONFIG = PlannerConfig(
         StrategyName.AGENTIC: 0.45,
     },
     max_escalations=4,
+
+    # Keep OFF initially so v2.2 behaviour is preserved.
+    health_aware_ranking=False,
+    degraded_health_penalty=0.10,
 )

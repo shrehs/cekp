@@ -21,7 +21,6 @@ The monitor uses a window of 10 and thresholds:
   unavailable_error_rate = 0.6  (6/10 errors)
   degraded_latency_ms   = 3000  (p95 >= 3s)
 """
-import math
 from concurrent.futures import ThreadPoolExecutor
 
 from app.planner.context import PlannerContext
@@ -29,8 +28,6 @@ from app.planner.enums import PlannerOutcome, StrategyName, StrategyOutcome, Str
 from app.planner.health import StrategyHealthMonitor
 from app.planner.planner import Planner
 from app.planner.registry import StrategyRegistry
-from app.planner.result import RetrievalResult
-from app.planner.strategy_base import RetrievalStrategy
 from tests.test_planner import AllowAllPolicy, FakeClassifier, FakeStrategy
 
 # ---------------------------------------------------------------------------
@@ -47,7 +44,13 @@ def _monitor(window: int = 10) -> StrategyHealthMonitor:
     )
 
 
-def _record_n(m, strategy, outcome, n, latency_ms=50.0):
+def _record_n(
+    m: StrategyHealthMonitor,
+    strategy: StrategyName,
+    outcome: StrategyOutcome,
+    n: int,
+    latency_ms: float | None = 50.0,
+) -> None:
     for _ in range(n):
         m.record(strategy, outcome, latency_ms)
 
@@ -86,8 +89,9 @@ def test_error_rate_above_degraded_threshold_is_degraded():
     assert m.state(StrategyName.GRAPH) == StrategyState.DEGRADED
 
 
-def test_error_rate_above_unavailable_threshold_is_unavailable():
+def test_static_error_rate_meeting_unavailable_threshold_is_unavailable():
     # 6/10 = 60% >= 60% unavailable threshold
+    # (renamed: the original name collided with the 7/10 boundary test below)
     m = _monitor()
     _record_n(m, StrategyName.GRAPH, StrategyOutcome.SUCCESS, 4)
     _record_n(m, StrategyName.GRAPH, StrategyOutcome.ERROR, 6)
@@ -232,8 +236,8 @@ def test_latency_degraded_does_not_override_unavailable_error_rate():
 
 
 def test_latency_only_from_non_error_observations():
-    # Errors have no latency (None). Only the 4 successes contribute to p95.
-    # 4 successes at 100ms -> p95 = 100ms < 3000ms -> DEGRADED from error rate only.
+    # Errors have no latency (None). Only the 6 successes contribute to p95.
+    # 6 successes at 100ms -> p95 = 100ms < 3000ms -> DEGRADED from error rate only.
     m = _monitor()
     _record_n(m, StrategyName.GRAPH, StrategyOutcome.ERROR, 4, latency_ms=None)
     _record_n(m, StrategyName.GRAPH, StrategyOutcome.SUCCESS, 6, latency_ms=100.0)
@@ -259,9 +263,8 @@ def test_full_state_transition_sequence_healthy_to_unavailable_to_healthy():
     Phase 2: inject errors — crosses degraded threshold, then unavailable.
     Phase 3: restore — successes push errors out of window, returns to HEALTHY.
 
-    This is the recovery experiment. The key assertion is the final one:
-    the monitor must return to HEALTHY after the dependency recovers.
-    You don't want "broke once → UNAVAILABLE forever."
+    The key assertion is the final one: the monitor must return to HEALTHY
+    after the dependency recovers. You don't want "broke once → UNAVAILABLE forever."
     """
     m = _monitor(window=10)
 
@@ -322,8 +325,6 @@ def test_latency_spike_then_recovery():
 # ---------------------------------------------------------------------------
 # 4. Recovery experiment — end-to-end planner loop
 #
-# Simulates the full observe → infer → decide → act → verify sequence:
-#
 #   Normal Graph
 #     ↓ inject failures
 #   Graph becomes UNAVAILABLE
@@ -332,7 +333,7 @@ def test_latency_spike_then_recovery():
 #     ↓ planner tries Hybrid
 #   Hybrid returns evidence
 #     ↓ verify outcome
-#   RECOVERY_SUCCESS: evidence-backed result, latency recorded
+#   RECOVERY_SUCCESS: evidence-backed result
 #     ↓ restore Graph (successes into monitor)
 #   Monitor returns to HEALTHY
 #     ↓ verify
@@ -368,6 +369,7 @@ def test_recovery_experiment_graph_unavailable_hybrid_fallback_evidence_backed()
 
     # Outcome verification
     assert result.outcome == PlannerOutcome.SUCCESS
+    assert result.result is not None
     assert result.result.strategy_name == StrategyName.HYBRID
     assert result.result.documents  # evidence-backed
 
@@ -409,6 +411,7 @@ def test_recovery_experiment_graph_restores_to_healthy_after_successes():
     result = planner.plan(PlannerContext(query="test after recovery"))
 
     assert result.outcome == PlannerOutcome.SUCCESS
+    assert result.result is not None
     assert result.result.strategy_name == StrategyName.GRAPH
     assert result.interventions == []  # no skip — Graph was healthy
 
@@ -435,6 +438,7 @@ def test_recovery_experiment_fallback_quality_preserved():
     result = planner.plan(PlannerContext(query="test"))
 
     assert result.outcome == PlannerOutcome.SUCCESS
+    assert result.result is not None
     assert result.result.confidence >= 0.5   # above hybrid threshold (0.50)
     assert result.result.documents            # evidence-backed, not empty
 

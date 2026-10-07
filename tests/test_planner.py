@@ -1,6 +1,7 @@
 from app.planner.config import PlannerConfig
 from app.planner.context import PlannerContext
 from app.planner.enums import PlannerOutcome, StrategyName, StrategyOutcome
+from app.planner.intent_classifier import IntentClassifier
 from app.planner.planner import Planner, build_trace_response, build_user_response
 from app.planner.policy_evaluator import PolicyEvaluator
 from app.planner.registry import StrategyRegistry
@@ -37,7 +38,7 @@ class FakeStrategy(RetrievalStrategy):
         )
 
 
-class FakeClassifier:
+class FakeClassifier(IntentClassifier):
     def __init__(self, ranked: list[StrategyName]):
         self.ranked = ranked
 
@@ -82,6 +83,7 @@ def test_first_strategy_succeeds():
     result = planner.plan(_ctx())
 
     assert result.outcome == PlannerOutcome.SUCCESS
+    assert result.result is not None
     assert result.result.strategy_name == StrategyName.HYBRID
     assert result.attempts == [
         {
@@ -102,6 +104,7 @@ def test_second_strategy_succeeds_after_first_is_low_confidence():
     result = planner.plan(_ctx())
 
     assert result.outcome == PlannerOutcome.SUCCESS
+    assert result.result is not None
     assert result.result.strategy_name == StrategyName.HYBRID
     assert len(result.attempts) == 2
     assert result.attempts[0]["outcome"] == "low_confidence"
@@ -147,6 +150,7 @@ def test_registry_missing_strategy_records_not_implemented_and_continues():
         "latency_ms": None,
         "metadata": None,
     }
+    assert result.result is not None
     assert result.result.strategy_name == StrategyName.HYBRID
 
 
@@ -197,7 +201,7 @@ def test_trace_response_shows_access_denied_plainly_unlike_user_response():
     user_response = build_user_response(planner_result)
 
     assert trace["planner_outcome"] == "access_denied"
-    assert trace["trace_version"] == "2"
+    assert trace["trace_version"] == "2.3"
     assert trace["evidence_outcome"] == "no_evidence"
     assert trace["policy_outcome"] == "denied"
     assert trace["selected_strategy"] is None
@@ -219,6 +223,7 @@ def test_strategy_exception_is_caught_and_recorded_as_error():
 
     assert result.attempts[0]["outcome"] == "error"
     assert result.outcome == PlannerOutcome.SUCCESS
+    assert result.result is not None
     assert result.result.strategy_name == StrategyName.VECTOR
 
 
@@ -248,6 +253,7 @@ def test_policy_denial_escalates_to_next_authorized_strategy():
     result = planner.plan(_ctx())
 
     assert result.outcome == PlannerOutcome.SUCCESS
+    assert result.result is not None
     assert result.result.strategy_name == StrategyName.HYBRID
     assert result.attempts[0] == {
         "strategy": "graph",
@@ -469,6 +475,7 @@ def test_planner_level_regression_real_classifier_routes_code_structure_query_to
     assert result.ranked_strategies == ["graph", "vector"]
     assert result.attempts[0]["outcome"] == "not_implemented"  # honest: real GraphStrategy isn't built yet
     assert result.outcome == PlannerOutcome.SUCCESS
+    assert result.result is not None
     assert result.result.strategy_name == StrategyName.VECTOR  # falls through correctly
 
 

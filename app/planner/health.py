@@ -31,7 +31,7 @@ import math
 import threading
 from collections import deque
 from dataclasses import dataclass, field
-
+from enum import Enum
 from app.planner.enums import StrategyName, StrategyOutcome, StrategyState
 
 # ---------------------------------------------------------------------------
@@ -43,11 +43,15 @@ _DEGRADED_ERROR_RATE = 0.3    # >= 30% errors in window -> DEGRADED
 _UNAVAILABLE_ERROR_RATE = 0.6  # >= 60% errors in window -> UNAVAILABLE
 _DEGRADED_LATENCY_MS = 3_000  # p95 >= 3s -> DEGRADED (even with low error rate)
 
+class ObservationSource(str, Enum):
+    RETRIEVAL = "retrieval"
+    HEALTH_PROBE = "health_probe"
 
 @dataclass
 class _Observation:
     outcome: str        # StrategyOutcome.value
     latency_ms: float | None
+    source: ObservationSource = ObservationSource.RETRIEVAL
 
 
 @dataclass
@@ -65,13 +69,27 @@ class StrategyHealthMonitor:
     _windows: dict[str, deque] = field(default_factory=dict, init=False, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
-    def record(self, strategy: StrategyName, outcome: StrategyOutcome, latency_ms: float | None) -> None:
-        """Record one attempt outcome into the sliding window."""
+    def record(
+        self,
+        strategy: StrategyName,
+        outcome: StrategyOutcome,
+        latency_ms: float | None,
+        source: ObservationSource = ObservationSource.RETRIEVAL,
+    ) -> None:
+        """Record an observation into the sliding window."""
         key = strategy.value
+
         with self._lock:
             if key not in self._windows:
                 self._windows[key] = deque(maxlen=self.window)
-            self._windows[key].append(_Observation(outcome=outcome.value, latency_ms=latency_ms))
+
+            self._windows[key].append(
+                _Observation(
+                    outcome=outcome.value,
+                    latency_ms=latency_ms,
+                    source=source,
+                )
+            )
 
     def state(self, strategy: StrategyName) -> StrategyState:
         """
@@ -111,7 +129,7 @@ class StrategyHealthMonitor:
 
         return StrategyState.HEALTHY
 
-    def probe_healthy(self, strategy: StrategyName, n: int = 1) -> None:
+    # def probe_healthy(self, strategy: StrategyName, n: int = 1) -> None:
         """
         Record n synthetic SUCCESS observations for a strategy.
 
@@ -125,8 +143,8 @@ class StrategyHealthMonitor:
         Only call this after independently confirming the dependency
         is reachable (e.g. a direct Neo4j RETURN 1 check).
         """
-        for _ in range(n):
-            self.record(strategy, StrategyOutcome.SUCCESS, latency_ms=0.0)
+        # for _ in range(n):
+        #     self.record(strategy, StrategyOutcome.SUCCESS, latency_ms=0.0)
 
     def snapshot(self) -> dict[str, str]:
         """Return {strategy_name: state_value} for all observed strategies."""
