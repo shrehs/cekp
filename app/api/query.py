@@ -164,16 +164,11 @@ async def monitor_state():
 
 
 @router.post("/monitor/probe")
-async def monitor_probe(strategy: str, n: int = 10):
+async def monitor_probe(strategy: str):
     """
-    Record n synthetic SUCCESS observations for a strategy.
-
-    Breaks the recovery deadlock: when a strategy is UNAVAILABLE the
-    planner skips it, so no real observations flow in and the window
-    never ages out. Call this after independently confirming the
-    dependency is reachable (e.g. /ready shows neo4j: ok).
-
-    Gated behind trace_endpoint_enabled -- never expose in production.
+    Probe the backing dependency and, if reachable, permit one real retrieval
+    trial for an UNAVAILABLE strategy. A dependency probe is not a retrieval
+    success and does not alter the health window.
     """
     if not settings.trace_endpoint_enabled:
         raise HTTPException(status_code=404, detail="Not found")
@@ -181,9 +176,43 @@ async def monitor_probe(strategy: str, n: int = 10):
         strategy_name = StrategyName(strategy)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown strategy: {strategy}")
-    _planner.monitor.probe_healthy(strategy_name, n=n)
+
+    if _planner.monitor.state(strategy_name).value != "unavailable":
+        raise HTTPException(
+            status_code=409,
+            detail="A recovery trial is only needed when the strategy is unavailable.",
+        )
+
+    try:
+        if strategy_name == StrategyName.GRAPH:
+            from app.core.graph_store import get_driver
+
+            with get_driver().session() as session:
+                result = session.run("RETURN 1 AS healthy").single()
+                if result is None or result["healthy"] != 1:
+                    raise RuntimeError("Neo4j health query returned no result")
+        else:
+            # Vector, hybrid, and agentic retrieval depend on Qdrant.
+            from app.core.vector_store import get_client
+
+            get_client().get_collections()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Dependency probe failed for {strategy_name.value}; strategy remains unavailable.",
+        ) from exc
+
+    granted = _planner.monitor.grant_recovery_trial(strategy_name)
+    if not granted:
+        raise HTTPException(
+            status_code=409,
+            detail="A recovery trial is already pending/in flight, or the strategy is no longer unavailable.",
+        )
+
     return {
-        "strategy": strategy,
-        "probed_successes": n,
+        "strategy": strategy_name.value,
+        "dependency_probe": "ok",
+        "recovery_trial_granted": True,
         "state": _planner.monitor.state(strategy_name).value,
+        "note": "Health remains unavailable until real retrieval observations update the window.",
     }

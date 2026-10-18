@@ -45,7 +45,6 @@ _DEGRADED_LATENCY_MS = 3_000  # p95 >= 3s -> DEGRADED (even with low error rate)
 
 class ObservationSource(str, Enum):
     RETRIEVAL = "retrieval"
-    HEALTH_PROBE = "health_probe"
 
 @dataclass
 class _Observation:
@@ -129,22 +128,48 @@ class StrategyHealthMonitor:
 
         return StrategyState.HEALTHY
 
-    # def probe_healthy(self, strategy: StrategyName, n: int = 1) -> None:
-        """
-        Record n synthetic SUCCESS observations for a strategy.
+    _recovery_trials: set[str] = field(default_factory=set, init=False, repr=False)
+    _recovery_trials_in_flight: set[str] = field(default_factory=set, init=False, repr=False)
 
-        Used by health-check probes to break the recovery deadlock:
-        when a strategy is UNAVAILABLE, the planner skips it, so no
-        real observations flow in and the window never ages out.
-        A probe confirms the dependency is reachable and seeds the
-        window with successes so the monitor can transition back to
-        HEALTHY or DEGRADED on the next real request.
+    def grant_recovery_trial(self, strategy: StrategyName) -> bool:
+        """Permit one real retrieval trial after an external dependency probe succeeds.
 
-        Only call this after independently confirming the dependency
-        is reachable (e.g. a direct Neo4j RETURN 1 check).
+        This never records a synthetic success or changes inferred health. The
+        permission is single-use and only available while the strategy is
+        inferred UNAVAILABLE.
         """
-        # for _ in range(n):
-        #     self.record(strategy, StrategyOutcome.SUCCESS, latency_ms=0.0)
+        key = strategy.value
+        with self._lock:
+            if key in self._recovery_trials or key in self._recovery_trials_in_flight:
+                return False
+            # Compute the unavailable threshold directly under the same lock;
+            # calling state() here would attempt to reacquire this non-reentrant lock.
+            observations = list(self._windows.get(key, []))
+            if not observations:
+                return False
+            errors = sum(
+                1 for item in observations
+                if item.outcome == StrategyOutcome.ERROR.value
+            )
+            if errors / len(observations) < self.unavailable_error_rate:
+                return False
+            self._recovery_trials.add(key)
+            return True
+
+    def consume_recovery_trial(self, strategy: StrategyName) -> bool:
+        """Atomically claim the one-shot permission for a real retrieval trial."""
+        key = strategy.value
+        with self._lock:
+            if key not in self._recovery_trials or key in self._recovery_trials_in_flight:
+                return False
+            self._recovery_trials.remove(key)
+            self._recovery_trials_in_flight.add(key)
+            return True
+
+    def finish_recovery_trial(self, strategy: StrategyName) -> None:
+        """Release the in-flight guard; only a new dependency probe grants another trial."""
+        with self._lock:
+            self._recovery_trials_in_flight.discard(strategy.value)
 
     def snapshot(self) -> dict[str, str]:
         """Return {strategy_name: state_value} for all observed strategies."""

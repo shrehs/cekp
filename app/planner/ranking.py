@@ -1,5 +1,14 @@
+import math
 from dataclasses import dataclass
 from app.planner.enums import StrategyName, StrategyState
+
+
+def finite_or_none(value: float | None) -> float | None:
+    """JSON-safe score: -inf/inf/nan (internal sentinels) become None."""
+    if value is None or not math.isfinite(value):
+        return None
+    return value
+
 
 @dataclass(frozen=True)
 class RankedCandidate:
@@ -13,10 +22,10 @@ class RankedCandidate:
     def to_dict(self) -> dict[str, object]:
         return {
             "strategy": self.strategy.value,
-            "routing_score": self.routing_score,
+            "routing_score": finite_or_none(self.routing_score),
             "health_state": self.health_state.value,
-            "health_penalty": self.health_penalty,
-            "adjusted_score": self.adjusted_score,
+            "health_penalty": finite_or_none(self.health_penalty),
+            "adjusted_score": finite_or_none(self.adjusted_score),
             "decision": self.decision,
         }
 

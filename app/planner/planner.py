@@ -42,11 +42,11 @@ from app.core.metrics import (
 )
 from app.planner.config import DEFAULT_PLANNER_CONFIG, PlannerConfig
 from app.planner.context import PlannerContext
-from app.planner.enums import PlannerOutcome, StrategyOutcome, StrategyState
+from app.planner.enums import PlannerOutcome, StrategyName, StrategyOutcome, StrategyState
 from app.planner.health import StrategyHealthMonitor
 from app.planner.intent_classifier import IntentClassifier
 from app.planner.policy_evaluator import PolicyEvaluator
-from app.planner.ranking import rank_candidates
+from app.planner.ranking import finite_or_none, rank_candidates
 from app.planner.registry import StrategyRegistry, build_default_registry
 from app.planner.result import RetrievalResult
 
@@ -185,12 +185,27 @@ class Planner:
         # First strategy skipped due to UNAVAILABLE (for recovery tracking).
         first_skipped: str | None = None
         recovery_start: float | None = None
+        recovery_trials: set[StrategyName] = set()
 
         for candidate in routing_candidates:
             if candidate.health_state != StrategyState.UNAVAILABLE:
                 continue
 
             skipped_name = candidate.strategy
+            if self.monitor.consume_recovery_trial(skipped_name):
+                recovery_trials.add(skipped_name)
+                interventions.append(
+                    {
+                        "strategy": skipped_name.value,
+                        "inferred_state": candidate.health_state.value,
+                        "decision": "trial",
+                        "reason": "dependency_probe_succeeded",
+                        "routing_score": candidate.routing_score,
+                        "health_penalty": candidate.health_penalty,
+                        "adjusted_score": finite_or_none(candidate.adjusted_score),
+                    }
+                )
+                continue
 
             interventions.append(
                 {
@@ -200,7 +215,7 @@ class Planner:
                     "reason": "inferred_unavailable",
                     "routing_score": candidate.routing_score,
                     "health_penalty": candidate.health_penalty,
-                    "adjusted_score": candidate.adjusted_score,
+                    "adjusted_score": finite_or_none(candidate.adjusted_score),
                 }
             )
 
@@ -232,7 +247,7 @@ class Planner:
                     "strategy": skipped_name.value,
                     "inferred_state": candidate.health_state.value,
                     "routing_score": candidate.routing_score,
-                    "adjusted_score": candidate.adjusted_score,
+                    "adjusted_score": finite_or_none(candidate.adjusted_score),
                 },
             )
 
@@ -245,7 +260,10 @@ class Planner:
         # ---------------------------------------------------------------
 
         for candidate in routing_candidates:
-            if candidate.health_state == StrategyState.UNAVAILABLE:
+            if (
+                candidate.health_state == StrategyState.UNAVAILABLE
+                and candidate.strategy not in recovery_trials
+            ):
                 continue
 
             strategy_name = candidate.strategy
@@ -283,12 +301,13 @@ class Planner:
                     candidate.routing_score,
                 )
 
-                span.set_attribute(
-                    "cekp.adjusted_score",
-                    candidate.adjusted_score,
-                )
+                _adj = finite_or_none(candidate.adjusted_score)
+                if _adj is not None:
+                    span.set_attribute("cekp.adjusted_score", _adj)
 
             if not authorized:
+                if strategy_name in recovery_trials:
+                    self.monitor.finish_recovery_trial(strategy_name)
                 attempts.append(
                     {
                         "strategy": strategy_name.value,
@@ -314,6 +333,8 @@ class Planner:
             strategy = self.registry.get(strategy_name)
 
             if strategy is None:
+                if strategy_name in recovery_trials:
+                    self.monitor.finish_recovery_trial(strategy_name)
                 attempts.append(
                     {
                         "strategy": strategy_name.value,
@@ -362,10 +383,9 @@ class Planner:
                         candidate.health_penalty,
                     )
 
-                    span.set_attribute(
-                        "cekp.adjusted_score",
-                        candidate.adjusted_score,
-                    )
+                    _adj = finite_or_none(candidate.adjusted_score)
+                    if _adj is not None:
+                        span.set_attribute("cekp.adjusted_score", _adj)
 
                     span.set_attribute(
                         "cekp.routing_decision",
@@ -402,6 +422,8 @@ class Planner:
                     StrategyOutcome.ERROR,
                     None,
                 )
+                if strategy_name in recovery_trials:
+                    self.monitor.finish_recovery_trial(strategy_name)
 
                 attempts.append(
                     {
@@ -430,6 +452,8 @@ class Planner:
                 result.outcome,
                 result.latency_ms,
             )
+            if strategy_name in recovery_trials:
+                self.monitor.finish_recovery_trial(strategy_name)
 
             # -----------------------------------------------------------
             # 9. Confidence evaluation

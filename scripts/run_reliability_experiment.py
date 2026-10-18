@@ -20,9 +20,9 @@ Runs the full reliability loop against the live stack:
     Capture the full /query/trace showing the intervention.
 
   Phase 3: Restore
-    Unpause Neo4j. Send successes through the graph path.
-    The sliding window fills with successes, pushing errors out.
-    Graph returns to HEALTHY.
+    Unpause Neo4j. For each request while Graph is UNAVAILABLE, run a
+    real Neo4j dependency probe that grants one bounded retrieval trial.
+    Only the resulting real retrieval observation updates the health window.
 
   Phase 4: Verify recovery
     Send a graph-routed query. Verify Graph is attempted again (no skip).
@@ -159,12 +159,12 @@ def metric_snapshot() -> dict:
     }
 
 
-def _probe_monitor(strategy: str, n: int = 10) -> dict:
-    """POST /query/monitor/probe to seed the monitor with synthetic successes."""
+def _probe_monitor(strategy: str) -> dict:
+    """Probe the real backing dependency and request one bounded retrieval trial."""
     try:
         r = httpx.post(
             f"{API}/query/monitor/probe",
-            params={"strategy": strategy, "n": n},
+            params={"strategy": strategy},
             timeout=5.0,
         )
         return r.json()
@@ -379,29 +379,27 @@ def phase_2_observe_skip() -> PhaseResult:
 
 def phase_3_restore() -> PhaseResult:
     """
-    Unpause Neo4j. Confirm it is reachable via /ready, then probe the
-    monitor with synthetic successes to break the recovery deadlock.
-    Send real graph queries to confirm the monitor transitions to HEALTHY.
+    Unpause Neo4j. While Graph is UNAVAILABLE, each request first performs a
+    real dependency probe that grants at most one real retrieval trial.
+    Only real retrieval observations age out errors in the sliding window.
     """
     phase = PhaseResult(
         phase="3_restore",
-        description=f"Unpause Neo4j, probe monitor with successes, verify Graph returns to HEALTHY.",
+        description="Unpause Neo4j and verify recovery through bounded real retrieval trials.",
     )
-    print(f"\n[Phase 3] Restoring -- unpausing {NEO4J_CONTAINER}")
+    print(f"\\n[Phase 3] Restoring -- unpausing {NEO4J_CONTAINER}")
 
     unpaused = docker_unpause(NEO4J_CONTAINER)
     if not unpaused:
         phase.observations.append(f"WARNING: could not unpause {NEO4J_CONTAINER}")
-        print(f"  WARNING: docker unpause failed")
+        print("  WARNING: docker unpause failed")
     else:
         phase.observations.append(f"Neo4j container unpaused: {NEO4J_CONTAINER}")
-        print(f"  Neo4j unpaused")
+        print("  Neo4j unpaused")
 
-    # Wait for Neo4j to accept connections
     print("  waiting 10s for Neo4j to accept connections...")
     time.sleep(10)
 
-    # Confirm Neo4j is reachable before probing
     try:
         r = httpx.get(f"{API}/ready", timeout=5.0)
         deps = r.json().get("dependencies", {})
@@ -412,18 +410,11 @@ def phase_3_restore() -> PhaseResult:
     phase.observations.append(f"Neo4j reachable via /ready: {neo4j_ok}")
     print(f"  Neo4j reachable: {neo4j_ok}")
 
-    if neo4j_ok:
-        # Probe the monitor with 10 synthetic successes to push errors out
-        probe_result = _probe_monitor("graph", n=10)
-        phase.observations.append(f"probe result: {probe_result}")
-        print(f"  probe result: {probe_result}")
-    else:
-        phase.observations.append("Skipped probe -- Neo4j not yet reachable")
-        print("  Skipped probe")
-
-    # Send real graph queries to confirm the monitor state
     success_count = 0
     for i in range(SUCCESSES_TO_RESTORE):
+        if _get_monitor_state().get("graph") == "unavailable":
+            probe_result = _probe_monitor("graph")
+            phase.queries.append({"recovery_probe": probe_result})
         print(f"  restore query {i+1}/{SUCCESSES_TO_RESTORE}...", end=" ", flush=True)
         trace = query_trace(GRAPH_QUERY)
         summary = _trace_summary(trace)
@@ -440,7 +431,7 @@ def phase_3_restore() -> PhaseResult:
     phase.metrics_snapshot = metric_snapshot()
     phase.observations.append(f"restore queries sent: {SUCCESSES_TO_RESTORE}")
     phase.observations.append(f"graph non-error outcomes: {success_count}/{SUCCESSES_TO_RESTORE}")
-
+    phase.observations.append("Dependency probes do not write synthetic retrieval successes.")
     phase.passed = neo4j_ok and success_count >= 5
     print(f"  non-error count: {success_count}/{SUCCESSES_TO_RESTORE}")
     print(f"  passed: {phase.passed}")

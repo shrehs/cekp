@@ -486,3 +486,62 @@ def test_monitor_concurrent_writes_do_not_corrupt_state():
 
     state = m.state(StrategyName.GRAPH)
     assert state in {StrategyState.HEALTHY, StrategyState.DEGRADED, StrategyState.UNAVAILABLE}
+
+def test_dependency_probe_grants_single_real_trial_without_faking_success():
+    m = _monitor()
+    _record_n(m, StrategyName.GRAPH, StrategyOutcome.ERROR, 10)
+    assert m.state(StrategyName.GRAPH) == StrategyState.UNAVAILABLE
+
+    assert m.grant_recovery_trial(StrategyName.GRAPH) is True
+    # The dependency probe itself is not a retrieval observation.
+    assert m.state(StrategyName.GRAPH) == StrategyState.UNAVAILABLE
+    assert m.consume_recovery_trial(StrategyName.GRAPH) is True
+    # A second concurrent grant cannot be issued while the trial is in flight.
+    assert m.grant_recovery_trial(StrategyName.GRAPH) is False
+    assert m.consume_recovery_trial(StrategyName.GRAPH) is False
+    m.finish_recovery_trial(StrategyName.GRAPH)
+
+    # A fresh probe is required before another trial can be claimed.
+    assert m.consume_recovery_trial(StrategyName.GRAPH) is False
+
+
+def test_recovery_trial_is_not_granted_when_strategy_is_not_unavailable():
+    m = _monitor()
+    _record_n(m, StrategyName.GRAPH, StrategyOutcome.SUCCESS, 10)
+    assert m.grant_recovery_trial(StrategyName.GRAPH) is False
+
+
+def test_recovery_trial_allows_one_real_planner_attempt_then_returns_to_skip():
+    m = _monitor()
+    _record_n(m, StrategyName.GRAPH, StrategyOutcome.ERROR, 10)
+    graph = FakeStrategy(
+        StrategyName.GRAPH, StrategyOutcome.SUCCESS, confidence=0.9, latency_ms=25.0
+    )
+    registry = StrategyRegistry()
+    registry.register(StrategyName.GRAPH, graph)
+    planner = Planner(
+        registry=registry,
+        classifier=FakeClassifier([StrategyName.GRAPH]),
+        policy=AllowAllPolicy(),
+        monitor=m,
+    )
+
+    assert m.grant_recovery_trial(StrategyName.GRAPH) is True
+    first = planner.plan(PlannerContext(query="recovery trial test"))
+    assert first.outcome == PlannerOutcome.SUCCESS
+    assert first.attempts[0]["outcome"] == StrategyOutcome.SUCCESS.value
+    assert first.interventions[0]["decision"] == "trial"
+
+    # No synthetic reset: the actual retrieval success merely enters the
+    # normal rolling window, so the state can remain unavailable until enough
+    # real observations displace the historical errors.
+    assert m.state(StrategyName.GRAPH) == StrategyState.UNAVAILABLE
+
+    second = planner.plan(PlannerContext(query="recovery trial test"))
+
+    # Graph remains unavailable, so the planner skips it.
+    # With no fallback strategy, the overall outcome is FAILED.
+    assert second.outcome == PlannerOutcome.FAILED
+    assert second.result is None
+    assert second.attempts[0]["outcome"] == "skipped_unavailable"
+    assert second.interventions[0]["decision"] == "skip"

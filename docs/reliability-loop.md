@@ -8,8 +8,10 @@ CEKP v2.1 added structured logs, Prometheus metrics, and Jaeger traces across
 eight dimensions: HTTP, planner, evidence, policy, strategy, documents,
 confidence, and latency. That answered "what happened."
 
-v2.2 asks the next question: **can the system infer a useful operating state
-from its observations, and act on it?**
+The v2.2 reliability loop introduced inferred per-strategy health and
+UNAVAILABLE skipping. v2.3 adds health-aware ranking for DEGRADED strategies
+and bounded, probe-gated recovery trials: **can inferred operating state
+change routing, and can a skipped strategy be tested safely for recovery?**
 
 ---
 
@@ -75,8 +77,13 @@ as new observations arrive. This means:
 - There is no half-open state to reason about or test.
 
 The tradeoff: under zero traffic, a broken dependency stays UNAVAILABLE
-indefinitely. That is the correct behaviour — if no requests are flowing,
-there is nothing to recover from.
+indefinitely. Recovery therefore uses an explicit, bounded trial mechanism:
+a real dependency probe can grant one retrieval trial, but it does not write
+a synthetic success or change inferred state. The trial must pass the normal
+policy gate, and only its real retrieval outcome enters the sliding window.
+A failed trial remains an infrastructure error; another trial requires a
+fresh successful dependency probe. Concurrent trials for the same strategy
+are prevented within this process.
 
 ---
 
@@ -234,40 +241,59 @@ DEGRADED, not HEALTHY. The monitor does not jump states.
 
 ### Recovery experiment
 
+The recovery path deliberately separates dependency reachability from
+retrieval health:
+
 ```
-inject 10 Graph errors → UNAVAILABLE
-planner skips Graph → intervention recorded
-Hybrid fallback → evidence-backed result
-restore Graph (10 successes) → HEALTHY
-next request → Graph attempted, no skip
+inject Graph infrastructure errors → UNAVAILABLE
+planner skips Graph → intervention recorded; fallback is attempted
+restore Neo4j
+real Neo4j RETURN 1 probe succeeds → one trial permission (state stays UNAVAILABLE)
+normal planner policy gate → one bounded Graph retrieval trial
+real retrieval outcome enters the sliding window
+repeat probe + trial only while still UNAVAILABLE
+enough real non-error retrieval observations displace old errors → state recovers
 ```
 
-Each step is a separate assertion. A failure pinpoints exactly which part
-of the loop broke.
+A successful dependency probe is not evidence that retrieval itself works.
+It only permits one real retrieval attempt. The trial still passes through
+the normal authorization check. A retrieval `ERROR` is recorded as an error;
+`LOW_CONFIDENCE` and `NOT_IMPLEMENTED` remain non-infrastructure outcomes and
+are not mislabelled as errors. The frozen planner/evidence outcome semantics
+are unchanged.
+
+The `/query/monitor/probe` endpoint is an internal diagnostic endpoint gated
+by `trace_endpoint_enabled`. It probes Neo4j for Graph, and Qdrant for Vector,
+Hybrid, and Agentic strategies. It returns `503` if the dependency probe fails,
+`409` if a trial is not applicable or already pending/in flight, and otherwise
+grants a single-use trial. It does not directly modify the observation window.
+The endpoint should remain disabled outside local/development environments.
+
+The automated tests cover monitor permission semantics and the planner's
+one-trial path using fake strategy/dependency components. The live Docker
+experiment script is an integration experiment and must be run against a
+running stack before claiming measured recovery time or end-to-end recovery.
 
 ---
 
-## What DEGRADED does not yet do
+## DEGRADED routing and current limits
 
-`DEGRADED` is currently observable but not actionable. The planner attempts
-a degraded strategy the same as a healthy one.
-
-The next step (v2.3) is to let `DEGRADED` influence strategy ranking:
+In v2.3, `DEGRADED` is actionable through a configurable routing penalty.
+The penalty changes candidate order only; it does not change retrieval scores,
+confidence, authorization, or evidence semantics.
 
 ```
 Normal ranking:    Graph 0.91 > Hybrid 0.84 > Vector 0.71
 Graph is DEGRADED: Graph 0.61 > Hybrid 0.84 > Vector 0.71
-                              ↑ health penalty applied
 Effective ranking: Hybrid 0.84 > Vector 0.71 > Graph 0.61
 ```
 
-This is when inferred system state starts influencing the AI decision itself —
-not as a hard skip, but as a soft preference signal that the planner can
-override if no better option exists.
-
-That is a more meaningful controllability experiment than adding more fallback
-code, because it makes the system's reasoning about its own health part of the
-retrieval decision.
+This is a soft preference signal, not a proof that the alternative will
+produce better evidence. The planner still evaluates candidates through its
+normal policy and evidence flow. The recovery trial mechanism is separate:
+it temporarily permits one real attempt for an UNAVAILABLE strategy after a
+successful dependency probe, while preserving the inferred state until real
+retrieval observations update the window.
 
 ---
 

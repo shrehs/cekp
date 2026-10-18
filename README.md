@@ -355,10 +355,14 @@ non-healthy strategy can be probed through the real dependency path. For an
 unavailable strategy, a successful probe permits a real retrieval attempt; that
 retrieval result verifies whether the strategy has actually recovered.
 
-A live reliability experiment verified the complete loop: injected Neo4j failure
-→ Graph became UNAVAILABLE → Graph was skipped → Hybrid produced an
-evidence-backed fallback → Neo4j was restored → Graph recovered to HEALTHY
-→ Graph became eligible again.
+The live integration experiment is scripted in
+`scripts/run_reliability_experiment.py`. It injects a Neo4j failure, verifies
+the skip/fallback path, restores Neo4j, and exercises recovery through a
+successful dependency probe followed by one real retrieval trial at a time.
+The probe itself does not write synthetic successes or mark the strategy
+healthy. The live Docker experiment has not been executed as part of this
+source review, so no new end-to-end recovery result or recovery-time claim is
+made here.
 
 The system is intentionally explicit and auditable rather than claiming
 autonomous recovery beyond what has been implemented.
